@@ -1,1 +1,166 @@
-remote.css
+/* ============================================
+   Kumanda Navigasyon Stilleri
+   Android TV Box Remote Control Support
+   ============================================ */
+
+/* Focus Ring - Seçili öğe belirginleştirme */
+[data-focusable].focused {
+    outline: none;
+    position: relative;
+}
+
+[data-focusable].focused::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border: 3px solid var(--accent);
+    border-radius: inherit;
+    pointer-events: none;
+    animation: focusGlow 1.5s ease-in-out infinite;
+    z-index: 100;
+}
+
+@keyframes focusGlow {
+    0%, 100% {
+        border-color: var(--accent);
+        box-shadow: 0 0 10px var(--accent-glow);
+    }
+    50% {
+        border-color: var(--accent-secondary);
+        box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+    }
+}
+
+/* Kanal kartları focus */
+.channel-card.focused {
+    border-color: var(--accent) !important;
+    transform: scale(1.08) !important;
+    box-shadow: 0 0 30px var(--accent-glow), var(--shadow-lg) !important;
+    z-index: 50 !important;
+}
+
+.channel-card.focused::after {
+    border-radius: var(--radius-md);
+}
+
+.channel-card.focused .channel-name {
+    color: var(--accent);
+}
+
+/* Kategori buton focus */
+.category-btn.focused {
+    border-color: var(--accent) !important;
+    background: var(--bg-card-hover) !important;
+    color: var(--text-primary) !important;
+    transform: scale(1.05);
+}
+
+.category-btn.focused::after {
+    border-radius: var(--radius-xl);
+}
+
+/* Player buton focus */
+.player-btn.focused {
+    transform: scale(1.15) !important;
+    background: var(--accent) !important;
+}
+
+.player-btn.focused::after {
+    border-radius: var(--radius-md);
+}
+
+/* D-Pad göstergesi */
+.dpad-indicator {
+    position: fixed;
+    bottom: 60px;
+    right: 20px;
+    width: 100px;
+    height: 100px;
+    z-index: 9999;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+}
+
+.dpad-indicator.visible {
+    opacity: 0.5;
+}
+
+.dpad-indicator .dpad-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 24px;
+    height: 24px;
+    background: var(--accent);
+    border-radius: 50%;
+}
+
+.dpad-indicator .dpad-arrow {
+    position: absolute;
+    width: 0;
+    height: 0;
+    border: 10px solid transparent;
+}
+
+.dpad-indicator .dpad-up {
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    border-bottom-color: var(--text-muted);
+}
+
+.dpad-indicator .dpad-down {
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    border-top-color: var(--text-muted);
+}
+
+.dpad-indicator .dpad-left {
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    border-right-color: var(--text-muted);
+}
+
+.dpad-indicator .dpad-right {
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    border-left-color: var(--text-muted);
+}
+
+.dpad-indicator .dpad-arrow.active {
+    border-bottom-color: var(--accent);
+    border-top-color: var(--accent);
+    border-right-color: var(--accent);
+    border-left-color: var(--accent);
+}
+
+/* Scroll göstergesi */
+.scroll-indicator {
+    position: fixed;
+    right: 12px;
+    top: 140px;
+    bottom: 60px;
+    width: 4px;
+    background: var(--bg-card);
+    border-radius: 2px;
+    z-index: 50;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.scroll-indicator.visible {
+    opacity: 1;
+}
+
+.scroll-indicator .scroll-thumb {
+    width: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    position: absolute;
+    transition: top 0.1s, height 0.1s;
+}
