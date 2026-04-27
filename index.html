@@ -2,39 +2,2112 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>TİVİM - Canlı TV</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/remote.css">
-    <!-- HLS.js - Her türlü video stream desteği -->
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-    <!-- DASH desteği -->
-    <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
-    <!-- FLV desteği -->
-    <script src="https://cdn.jsdelivr.net/npm/flv.js@latest/dist/flv.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        /* ========== RESET & BASE ========== */
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #0f1117;
+            --bg2: #1a1d2e;
+            --bg3: #242840;
+            --bg4: #2d3154;
+            --accent: #4f7cff;
+            --accent2: #7c5cfc;
+            --accent-glow: rgba(79,124,255,0.35);
+            --text: #eef0f6;
+            --text2: #9ba3be;
+            --text3: #5c6380;
+            --danger: #ff4757;
+            --success: #2ed573;
+            --warn: #ffa502;
+            --border: #2a2e45;
+            --card-r: 14px;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        button { 
+            font-family: inherit; 
+            cursor: pointer;
+            border: none;
+            outline: none;
+        }
+
+        input, select, textarea {
+            font-family: inherit;
+            outline: none;
+        }
+
+        .hidden { display: none !important; }
+
+        /* ========== SPLASH ========== */
+        #splash {
+            position: fixed;
+            inset: 0;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 99999;
+            transition: opacity .6s;
+        }
+
+        #splash.fade { opacity: 0; pointer-events: none; }
+
+        .splash-inner {
+            text-align: center;
+        }
+
+        .splash-icon {
+            width: 100px;
+            height: 100px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            border-radius: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 42px;
+            color: #fff;
+            margin: 0 auto 20px;
+            animation: splashPulse 1.5s ease infinite;
+        }
+
+        @keyframes splashPulse {
+            0%,100% { transform: scale(1); box-shadow: 0 0 0 0 var(--accent-glow); }
+            50% { transform: scale(1.06); box-shadow: 0 0 30px 10px var(--accent-glow); }
+        }
+
+        .splash-inner h1 {
+            font-size: 40px;
+            font-weight: 800;
+            letter-spacing: 3px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .splash-inner p {
+            color: var(--text2);
+            margin-top: 6px;
+            font-size: 15px;
+        }
+
+        .splash-bar {
+            width: 220px;
+            height: 3px;
+            background: var(--bg3);
+            border-radius: 3px;
+            margin: 24px auto 10px;
+            overflow: hidden;
+        }
+
+        .splash-bar-fill {
+            width: 30%;
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--accent2));
+            border-radius: 3px;
+            animation: barMove 1.2s ease infinite;
+        }
+
+        @keyframes barMove {
+            0% { width: 10%; margin-left: 0; }
+            50% { width: 50%; margin-left: 25%; }
+            100% { width: 10%; margin-left: 90%; }
+        }
+
+        #splashMsg {
+            font-size: 12px;
+            color: var(--text3);
+        }
+
+        /* ========== LAYOUT ========== */
+        #app {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* ---- HEADER ---- */
+        .header {
+            height: 56px;
+            min-height: 56px;
+            background: var(--bg2);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 16px;
+            z-index: 100;
+        }
+
+        .header-logo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            flex-shrink: 0;
+        }
+
+        .header-logo i {
+            font-size: 22px;
+            color: var(--accent);
+        }
+
+        .header-logo span {
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-search {
+            flex: 1;
+            max-width: 400px;
+            position: relative;
+        }
+
+        .header-search input {
+            width: 100%;
+            padding: 8px 12px 8px 34px;
+            background: var(--bg3);
+            border: 2px solid transparent;
+            border-radius: 10px;
+            color: var(--text);
+            font-size: 14px;
+            transition: border-color .2s;
+        }
+
+        .header-search input::placeholder { color: var(--text3); }
+        .header-search input:focus { border-color: var(--accent); }
+
+        .header-search i {
+            position: absolute;
+            left: 11px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text3);
+            font-size: 13px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-left: auto;
+            flex-shrink: 0;
+        }
+
+        .header-clock {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text2);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .header-count {
+            font-size: 12px;
+            color: var(--text3);
+            background: var(--bg3);
+            padding: 4px 10px;
+            border-radius: 20px;
+        }
+
+        .btn-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--bg3);
+            color: var(--text2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            transition: all .2s;
+        }
+
+        .btn-icon:hover, .btn-icon.focused {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        /* ---- CATEGORIES ---- */
+        .categories {
+            height: 48px;
+            min-height: 48px;
+            background: var(--bg2);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding: 0 20px;
+            gap: 6px;
+            scrollbar-width: none;
+        }
+
+        .categories::-webkit-scrollbar { display: none; }
+
+        .cat-btn {
+            padding: 6px 16px;
+            background: transparent;
+            border: 2px solid transparent;
+            border-radius: 20px;
+            color: var(--text2);
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+            transition: all .2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .cat-btn i { font-size: 12px; }
+
+        .cat-btn:hover, .cat-btn.focused {
+            background: var(--bg3);
+            color: var(--text);
+            border-color: var(--bg4);
+        }
+
+        .cat-btn.active {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        .cat-btn.focused {
+            border-color: var(--accent) !important;
+            box-shadow: 0 0 0 2px var(--accent-glow);
+        }
+
+        /* ---- CHANNEL GRID ---- */
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 16px 20px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--bg3) transparent;
+        }
+
+        .content::-webkit-scrollbar { width: 5px; }
+        .content::-webkit-scrollbar-track { background: transparent; }
+        .content::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 5px; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+            gap: 12px;
+        }
+
+        .card {
+            background: var(--bg2);
+            border: 2px solid var(--border);
+            border-radius: var(--card-r);
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all .25s ease;
+            position: relative;
+            min-height: 140px;
+            justify-content: center;
+        }
+
+        .card:hover, .card.focused {
+            border-color: var(--accent);
+            transform: scale(1.06);
+            box-shadow: 0 0 20px var(--accent-glow), 0 8px 25px rgba(0,0,0,.3);
+            z-index: 5;
+        }
+
+        .card.focused {
+            animation: cardGlow 1.5s ease infinite;
+        }
+
+        @keyframes cardGlow {
+            0%,100% { box-shadow: 0 0 15px var(--accent-glow); }
+            50% { box-shadow: 0 0 30px var(--accent-glow); }
+        }
+
+        .card-num {
+            position: absolute;
+            top: 6px;
+            left: 8px;
+            font-size: 10px;
+            color: var(--text3);
+            background: var(--bg);
+            padding: 1px 6px;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+
+        .card-fav {
+            position: absolute;
+            top: 6px;
+            right: 8px;
+            color: var(--warn);
+            font-size: 12px;
+            display: none;
+        }
+
+        .card.fav .card-fav { display: block; }
+
+        .card-logo {
+            width: 52px;
+            height: 52px;
+            border-radius: 12px;
+            object-fit: contain;
+            background: var(--bg);
+            padding: 4px;
+        }
+
+        .card-logo-ph {
+            width: 52px;
+            height: 52px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .card-name {
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1.25;
+            word-break: break-word;
+        }
+
+        .card-group {
+            font-size: 10px;
+            color: var(--text3);
+            background: var(--bg);
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+
+        /* No results */
+        .no-data {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text3);
+        }
+
+        .no-data i { font-size: 48px; margin-bottom: 12px; display: block; }
+        .no-data h3 { font-size: 20px; color: var(--text2); margin-bottom: 4px; }
+
+        /* ---- FOOTER ---- */
+        .footer {
+            height: 40px;
+            min-height: 40px;
+            background: var(--bg2);
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            padding: 0 20px;
+        }
+
+        .footer span {
+            font-size: 11px;
+            color: var(--text3);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .footer kbd {
+            background: var(--bg3);
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-size: 10px;
+            border: 1px solid var(--bg4);
+        }
+
+        /* ========== PLAYER ========== */
+        #player {
+            position: fixed;
+            inset: 0;
+            background: #000;
+            z-index: 9000;
+        }
+
+        #player video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        #player video.cover { object-fit: cover; }
+        #player video.stretch { object-fit: fill; }
+
+        .p-loading {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,.7);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            z-index: 10;
+        }
+
+        .spinner {
+            width: 40px; height: 40px;
+            border: 3px solid var(--bg3);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin .8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .p-loading span { color: var(--text2); font-size: 14px; }
+
+        .p-error {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            z-index: 11;
+        }
+
+        .p-error i { font-size: 40px; color: var(--danger); }
+        .p-error span { color: var(--text2); font-size: 16px; }
+
+        .p-error button {
+            padding: 10px 28px;
+            background: var(--accent);
+            color: #fff;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all .2s;
+        }
+
+        .p-error button.focused {
+            transform: scale(1.1);
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
+        /* Player Controls Overlay */
+        .p-controls {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(180deg,
+                rgba(0,0,0,.75) 0%, transparent 25%,
+                transparent 75%, rgba(0,0,0,.75) 100%
+            );
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px 24px;
+            z-index: 5;
+            transition: opacity .3s;
+        }
+
+        .p-controls.hide { opacity: 0; pointer-events: none; }
+
+        .p-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .p-now {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .p-now img {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            object-fit: contain;
+            background: rgba(255,255,255,.1);
+            padding: 3px;
+        }
+
+        .p-now h2 {
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .p-now small {
+            color: var(--text2);
+            font-size: 13px;
+        }
+
+        .p-clock {
+            font-size: 26px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .p-bottom {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .p-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 10px 18px;
+            background: rgba(255,255,255,.1);
+            backdrop-filter: blur(8px);
+            border: 2px solid transparent;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 11px;
+            transition: all .2s;
+            min-width: 70px;
+        }
+
+        .p-btn i { font-size: 20px; }
+
+        .p-btn:hover, .p-btn.focused {
+            background: var(--accent);
+            border-color: var(--accent);
+            transform: scale(1.1);
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
+        /* Channel OSD */
+        .ch-osd {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            background: rgba(0,0,0,.8);
+            backdrop-filter: blur(10px);
+            padding: 16px 26px;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            text-align: center;
+            z-index: 20;
+        }
+
+        .ch-osd-num {
+            font-size: 40px;
+            font-weight: 700;
+            color: var(--accent);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .ch-osd-name {
+            font-size: 14px;
+            color: var(--text2);
+            margin-top: 2px;
+        }
+
+        /* Volume OSD */
+        .vol-osd {
+            position: absolute;
+            left: 30px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(0,0,0,.8);
+            backdrop-filter: blur(10px);
+            padding: 14px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            z-index: 20;
+        }
+
+        .vol-osd i { font-size: 20px; color: var(--accent); }
+
+        .vol-bar {
+            width: 6px;
+            height: 100px;
+            background: var(--bg3);
+            border-radius: 3px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .vol-fill {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            background: var(--accent);
+            border-radius: 3px;
+            transition: height .1s;
+        }
+
+        .vol-osd span {
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* Text OSD */
+        .text-osd {
+            position: absolute;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,.8);
+            backdrop-filter: blur(10px);
+            padding: 10px 22px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            font-size: 16px;
+            font-weight: 600;
+            z-index: 20;
+            white-space: nowrap;
+        }
+
+        /* Mini Channel List */
+        .mini-list {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 300px;
+            background: rgba(15,17,23,.95);
+            backdrop-filter: blur(10px);
+            z-index: 15;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid var(--border);
+        }
+
+        .mini-list h3 {
+            padding: 14px 16px;
+            font-size: 15px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .mini-list-items {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px;
+        }
+
+        .mini-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all .2s;
+            border: 2px solid transparent;
+        }
+
+        .mini-item:hover, .mini-item.focused {
+            background: var(--bg3);
+            border-color: var(--accent);
+        }
+
+        .mini-item.active {
+            background: var(--accent);
+        }
+
+        .mini-item img {
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+            object-fit: contain;
+            background: var(--bg2);
+        }
+
+        .mini-item-name {
+            flex: 1;
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .mini-item-num {
+            font-size: 11px;
+            color: var(--text3);
+        }
+
+        /* ========== ADMIN ========== */
+        .admin-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.85);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .admin-box {
+            background: var(--bg2);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 900px;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .admin-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
+        }
+
+        .admin-head h2 {
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .admin-head h2 i { color: var(--accent); }
+
+        .admin-close {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--bg3);
+            color: var(--text2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .admin-close:hover { background: var(--danger); color: #fff; }
+
+        .admin-body {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .admin-nav {
+            width: 180px;
+            min-width: 180px;
+            background: var(--bg);
+            border-right: 1px solid var(--border);
+            padding: 10px 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .admin-nav button {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: transparent;
+            color: var(--text2);
+            font-size: 13px;
+            border-radius: 8px;
+            transition: all .2s;
+            text-align: left;
+            width: 100%;
+        }
+
+        .admin-nav button i { width: 16px; text-align: center; font-size: 13px; }
+        .admin-nav button:hover { background: var(--bg3); color: var(--text); }
+        .admin-nav button.active { background: var(--accent); color: #fff; }
+
+        .admin-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .admin-section { display: none; }
+        .admin-section.active { display: block; }
+
+        .admin-section h3 {
+            font-size: 16px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .admin-section h3 i { color: var(--accent); }
+
+        /* Stats */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .stat {
+            background: var(--bg);
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        .stat-val { font-size: 26px; font-weight: 700; }
+        .stat-lbl { font-size: 12px; color: var(--text3); margin-top: 2px; }
+
+        /* Form */
+        .fg { margin-bottom: 14px; }
+        .fg label { display: block; font-size: 13px; color: var(--text2); margin-bottom: 5px; font-weight: 500; }
+
+        .fg input, .fg select, .fg textarea {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 14px;
+            transition: border-color .2s;
+        }
+
+        .fg input:focus, .fg select:focus, .fg textarea:focus {
+            border-color: var(--accent);
+        }
+
+        .fg textarea { height: 80px; resize: vertical; }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all .2s;
+        }
+
+        .btn-p { background: var(--accent); color: #fff; }
+        .btn-p:hover { background: #3d68e0; }
+        .btn-s { background: var(--success); color: #fff; }
+        .btn-d { background: var(--danger); color: #fff; }
+        .btn-g { background: var(--bg3); color: var(--text); }
+
+        .alert {
+            padding: 10px 16px;
+            border-radius: 8px;
+            margin: 12px 0;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .alert-info { background: rgba(79,124,255,.1); border: 1px solid rgba(79,124,255,.25); color: var(--accent); }
+        .alert-ok { background: rgba(46,213,115,.1); border: 1px solid rgba(46,213,115,.25); color: var(--success); }
+
+        /* Channel table */
+        .ch-tbl { width: 100%; border-collapse: collapse; }
+
+        .ch-tbl th, .ch-tbl td {
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+
+        .ch-tbl th {
+            background: var(--bg);
+            color: var(--text3);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            position: sticky;
+            top: 0;
+        }
+
+        .ch-tbl tr:hover td { background: var(--bg3); }
+
+        .ch-tbl img {
+            width: 26px;
+            height: 26px;
+            border-radius: 4px;
+            object-fit: contain;
+            vertical-align: middle;
+            background: var(--bg);
+        }
+
+        .toggle {
+            width: 38px;
+            height: 20px;
+            background: var(--bg);
+            border-radius: 10px;
+            position: relative;
+            cursor: pointer;
+            border: 2px solid var(--border);
+            transition: all .2s;
+        }
+
+        .toggle.on { background: var(--success); border-color: var(--success); }
+
+        .toggle::after {
+            content: '';
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #fff;
+            position: absolute;
+            top: 1px;
+            left: 1px;
+            transition: left .2s;
+        }
+
+        .toggle.on::after { left: calc(100% - 15px); }
+
+        /* ========== RESPONSIVE ========== */
+        @media (max-width: 600px) {
+            .grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+            .header-search { max-width: 200px; }
+            .footer span { font-size: 9px; }
+            .admin-nav { width: 140px; min-width: 140px; }
+            .mini-list { width: 240px; }
+        }
+    </style>
 </head>
 <body>
-    <!-- Splash Screen -->
-    <div id="splashScreen" class="splash-screen">
-        <div class="splash-content">
-            <div class="splash-logo">
-                <i class="fas fa-tv"></i>
-            </div>
-            <h1>TİVİM</h1>
-            <p>Kanallar yükleniyor...</p>
-            <div class="splash-loader">
-                <div class="loader-bar"></div>
-            </div>
-            <span class="splash-status" id="splashStatus">Başlatılıyor...</span>
+
+<!-- ====== SPLASH ====== -->
+<div id="splash">
+    <div class="splash-inner">
+        <div class="splash-icon"><i class="fas fa-tv"></i></div>
+        <h1>TİVİM</h1>
+        <p>Canlı TV İzleme Platformu</p>
+        <div class="splash-bar"><div class="splash-bar-fill"></div></div>
+        <span id="splashMsg">Başlatılıyor...</span>
+    </div>
+</div>
+
+<!-- ====== APP ====== -->
+<div id="app" class="hidden">
+    <!-- Header -->
+    <div class="header">
+        <div class="header-logo">
+            <i class="fas fa-tv"></i>
+            <span>TİVİM</span>
+        </div>
+        <div class="header-search">
+            <i class="fas fa-search"></i>
+            <input type="text" id="searchInput" placeholder="Kanal ara...">
+        </div>
+        <div class="header-right">
+            <span class="header-clock" id="clock">--:--</span>
+            <span class="header-count" id="chCount">0 kanal</span>
+            <button class="btn-icon" id="btnAdmin" title="Admin"><i class="fas fa-cog"></i></button>
         </div>
     </div>
 
-    <!-- Ana Uygulama -->
-    <div id="app" class="app hidden">
-        <!-- Üst Bar -->
-        <header class="top-bar" id="topBar">
+    <!-- Categories -->
+    <div class="categories" id="catBar">
+        <button class="cat-btn active" data-cat="all"><i class="fas fa-globe"></i> Tümü</button>
+        <button class="cat-btn" data-cat="favorites"><i class="fas fa-star"></i> Favoriler</button>
+        <button class="cat-btn" data-cat="recent"><i class="fas fa-history"></i> Son İzlenen</button>
+    </div>
+
+    <!-- Content -->
+    <div class="content" id="content">
+        <div class="grid" id="grid"></div>
+        <div class="no-data hidden" id="noData">
+            <i class="fas fa-satellite-dish"></i>
+            <h3>Kanal bulunamadı</h3>
+            <p>Farklı bir arama ya da kategori deneyin</p>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        <span><kbd>▲▼◄►</kbd> Gezin</span>
+        <span><kbd>OK</kbd> İzle</span>
+        <span><kbd>CH±</kbd> Kanal</span>
+        <span><kbd>VOL</kbd> Ses</span>
+        <span><kbd>↩</kbd> Geri</span>
+    </div>
+</div>
+
+<!-- ====== PLAYER ====== -->
+<div id="player" class="hidden">
+    <video id="vid" autoplay playsinline></video>
+
+    <div class="p-loading" id="pLoad">
+        <div class="spinner"></div>
+        <span>Yükleniyor...</span>
+    </div>
+
+    <div class="p-error hidden" id="pErr">
+        <i class="fas fa-exclamation-triangle"></i>
+        <span id="pErrMsg">Yayın açılamadı</span>
+        <button id="btnRetry">Tekrar Dene</button>
+    </div>
+
+    <div class="p-controls" id="pCtrl">
+        <div class="p-top">
+            <div class="p-now">
+                <img id="pLogo" src="" alt="" style="display:none">
+                <div>
+                    <h2 id="pName">-</h2>
+                    <small id="pCat">-</small>
+                </div>
+            </div>
+            <span class="p-clock" id="pClock">--:--</span>
+        </div>
+        <div class="p-bottom">
+            <button class="p-btn" id="btnPrev"><i class="fas fa-backward-step"></i>Önceki</button>
+            <button class="p-btn" id="btnPP"><i class="fas fa-pause"></i>Duraklat</button>
+            <button class="p-btn" id="btnNext"><i class="fas fa-forward-step"></i>Sonraki</button>
+            <button class="p-btn" id="btnFav"><i class="far fa-star"></i>Favori</button>
+            <button class="p-btn" id="btnRatio"><i class="fas fa-expand"></i>Ekran</button>
+            <button class="p-btn" id="btnStop"><i class="fas fa-stop"></i>Kapat</button>
+        </div>
+    </div>
+
+    <div class="ch-osd hidden" id="chOsd">
+        <div class="ch-osd-num" id="osdNum"></div>
+        <div class="ch-osd-name" id="osdName"></div>
+    </div>
+
+    <div class="vol-osd hidden" id="volOsd">
+        <i class="fas fa-volume-up" id="volIcon"></i>
+        <div class="vol-bar"><div class="vol-fill" id="volFill" style="height:100%"></div></div>
+        <span id="volTxt">100%</span>
+    </div>
+
+    <div class="text-osd hidden" id="textOsd"></div>
+
+    <div class="mini-list hidden" id="miniList">
+        <h3><i class="fas fa-list"></i> Kanallar</h3>
+        <div class="mini-list-items" id="miniItems"></div>
+    </div>
+</div>
+
+<!-- ====== SCRIPTS ====== -->
+<script>
+// =====================================================
+//  STORAGE
+// =====================================================
+const DB = {
+    _p: 'tivim_',
+    get(k, d=null) { try { const v = localStorage.getItem(this._p+k); return v ? JSON.parse(v) : d; } catch(e) { return d; } },
+    set(k, v) { try { localStorage.setItem(this._p+k, JSON.stringify(v)); } catch(e) {} },
+    del(k) { localStorage.removeItem(this._p+k); },
+
+    getFavs() { return this.get('favs', []); },
+    toggleFav(id) { let f = this.getFavs(); const i = f.indexOf(id); if(i>-1) f.splice(i,1); else f.push(id); this.set('favs',f); return i===-1; },
+    isFav(id) { return this.getFavs().includes(id); },
+
+    getRecent() { return this.get('recent', []); },
+    addRecent(id) { let r = this.getRecent().filter(x=>x!==id); r.unshift(id); this.set('recent', r.slice(0,50)); },
+
+    conf() {
+        return this.get('conf', {
+            url: 'https://raw.githubusercontent.com/kadirsener1/tivim/refs/heads/main/merged.m3u',
+            pass: 'admin123', vol: 100, interval: 3600000, lastUp: null,
+            hiddenCh: [], hiddenCat: []
+        });
+    },
+    saveConf(c) { this.set('conf', {...this.conf(), ...c}); },
+    isHidden(id) { return this.conf().hiddenCh.includes(id); },
+    cache() { return this.get('cache', null); },
+    setCache(d) { this.set('cache', {data:d, ts:Date.now()}); },
+    clearAll() { Object.keys(localStorage).filter(k=>k.startsWith(this._p)).forEach(k=>localStorage.removeItem(k)); }
+};
+
+// =====================================================
+//  M3U PARSER
+// =====================================================
+function parseM3U(text) {
+    const lines = text.split('\n').map(l=>l.trim()).filter(l=>l);
+    const chs = [];
+    let info = null;
+
+    for (let i = 0; i < lines.length; i++) {
+        const L = lines[i];
+        if (L.startsWith('#EXTINF:')) {
+            info = {};
+            const m = (tag) => { const r = L.match(new RegExp(tag+'="([^"]*)"','i')); return r ? r[1] : ''; };
+            info.logo = m('tvg-logo');
+            info.group = m('group-title') || 'Diğer';
+            info.tvgId = m('tvg-id');
+            const nm = L.match(/,\s*(.+)$/);
+            info.name = nm ? nm[1].trim() : 'Kanal ' + (chs.length+1);
+        } else if (!L.startsWith('#') && info) {
+            const url = L;
+            let type = 'hls';
+            const u = url.toLowerCase();
+            if (u.includes('.mpd')) type = 'dash';
+            else if (u.includes('.flv')) type = 'flv';
+            else if (u.includes('.mp4')) type = 'mp4';
+            else if (u.includes('.mkv')) type = 'mkv';
+
+            chs.push({
+                id: (info.name||'ch').toLowerCase().replace(/[^a-z0-9]/g,'_').slice(0,25) + '_' + chs.length,
+                num: chs.length + 1,
+                name: info.name,
+                url, type, 
+                logo: info.logo,
+                group: info.group,
+                tvgId: info.tvgId
+            });
+            info = null;
+        }
+    }
+    return chs;
+}
+
+async function fetchM3U(url) {
+    const proxies = [
+        url,
+        'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+        'https://corsproxy.io/?' + encodeURIComponent(url)
+    ];
+    for (const p of proxies) {
+        try {
+            const r = await fetch(p);
+            if (r.ok) { const t = await r.text(); if (t.length > 20) return t; }
+        } catch(e) { continue; }
+    }
+    throw new Error('M3U indirilemedi');
+}
+
+function catIcon(g) {
+    const c = g.toLowerCase();
+    const map = {
+        haber:'fa-newspaper',news:'fa-newspaper',spor:'fa-futbol',sport:'fa-futbol',
+        sinema:'fa-film',film:'fa-film',movie:'fa-film',dizi:'fa-tv',series:'fa-tv',
+        müzik:'fa-music',music:'fa-music',çocuk:'fa-child',kids:'fa-child',
+        belgesel:'fa-earth-americas',documentary:'fa-earth-americas',
+        eğlence:'fa-masks-theater',entertainment:'fa-masks-theater',
+        din:'fa-mosque',radyo:'fa-radio',radio:'fa-radio',
+    };
+    for (const [k,v] of Object.entries(map)) if (c.includes(k)) return v;
+    return 'fa-layer-group';
+}
+
+function getCategories(chs) {
+    const m = new Map();
+    chs.forEach(ch => {
+        if (!m.has(ch.group)) m.set(ch.group, {name:ch.group, count:0, icon:catIcon(ch.group)});
+        m.get(ch.group).count++;
+    });
+    return [...m.values()].sort((a,b) => b.count - a.count);
+}
+
+// =====================================================
+//  VIDEO PLAYER ENGINE
+// =====================================================
+const VID = {
+    el: null, hls: null,
+    channel: null, playing: false,
+    vol: 100, aspect: 0, aspects: ['','cover','stretch'],
+    retries: 0, maxRetry: 3, retryT: null,
+    ctrlT: null, ctrlVis: true,
+
+    init() {
+        this.el = document.getElementById('vid');
+        this.vol = DB.conf().vol || 100;
+        this.el.volume = this.vol / 100;
+
+        this.el.addEventListener('playing', () => this.onPlay());
+        this.el.addEventListener('waiting', () => this.onBuf());
+        this.el.addEventListener('error', () => this.onErr());
+        this.el.addEventListener('pause', () => {
+            const b = document.getElementById('btnPP');
+            b.querySelector('i').className = 'fas fa-play';
+            b.lastChild.textContent = 'Oynat';
+        });
+    },
+
+    async play(ch) {
+        this.channel = ch;
+        this.retries = 0;
+        this.destroy();
+        this.showLoad(true);
+        this.showErr(false);
+        this.updUI(ch);
+
+        DB.addRecent(ch.id);
+
+        try { await this.load(ch.url, ch.type); }
+        catch(e) { this.handleErr(); }
+    },
+
+    async load(url, type) {
+        if ((type === 'hls' || type === 'mkv' || !type) && Hls.isSupported()) {
+            return new Promise((ok, no) => {
+                const h = new Hls({
+                    maxBufferLength: 30, maxMaxBufferLength: 60,
+                    fragLoadingMaxRetry: 5, manifestLoadingMaxRetry: 3,
+                    enableWorker: true
+                });
+                h.loadSource(url);
+                h.attachMedia(this.el);
+                h.on(Hls.Events.MANIFEST_PARSED, () => {
+                    this.el.play().then(ok).catch(no);
+                });
+                h.on(Hls.Events.ERROR, (_,d) => {
+                    if (d.fatal) {
+                        if (d.type === Hls.ErrorTypes.MEDIA_ERROR) h.recoverMediaError();
+                        else if (d.type === Hls.ErrorTypes.NETWORK_ERROR) h.startLoad();
+                        else { h.destroy(); no(new Error(d.details)); }
+                    }
+                });
+                this.hls = h;
+            });
+        }
+        // Direct
+        return new Promise((ok, no) => {
+            this.el.src = url;
+            this.el.addEventListener('canplay', () => this.el.play().then(ok).catch(no), {once:true});
+            this.el.addEventListener('error', () => no(new Error('load fail')), {once:true});
+            this.el.load();
+        });
+    },
+
+    destroy() {
+        if (this.hls) { this.hls.destroy(); this.hls = null; }
+        this.el.removeAttribute('src');
+        this.el.load();
+        clearTimeout(this.retryT);
+    },
+
+    stop() { this.destroy(); this.channel = null; this.playing = false; },
+
+    togglePP() { this.el.paused ? this.el.play() : this.el.pause(); },
+
+    setVol(v) {
+        this.vol = Math.max(0, Math.min(100, v));
+        this.el.volume = this.vol / 100;
+        this.el.muted = this.vol === 0;
+        DB.saveConf({vol: this.vol});
+        this.showVol();
+    },
+
+    volUp() { this.setVol(this.vol + 5); },
+    volDown() { this.setVol(this.vol - 5); },
+    toggleMute() { this.el.muted = !this.el.muted; this.showVol(); },
+
+    cycleAspect() {
+        this.aspect = (this.aspect + 1) % this.aspects.length;
+        this.el.className = this.aspects[this.aspect];
+        const labels = ['Sığdır','Doldur','Ger'];
+        this.showText('Ekran: ' + labels[this.aspect]);
+    },
+
+    // UI
+    showLoad(b) { document.getElementById('pLoad').classList.toggle('hidden', !b); },
+    showErr(b, msg) {
+        document.getElementById('pErr').classList.toggle('hidden', !b);
+        if (msg) document.getElementById('pErrMsg').textContent = msg;
+        if (b) this.showLoad(false);
+    },
+
+    updUI(ch) {
+        document.getElementById('pName').textContent = ch.name;
+        document.getElementById('pCat').textContent = ch.group;
+        const logo = document.getElementById('pLogo');
+        if (ch.logo) { logo.src = ch.logo; logo.style.display = 'block'; }
+        else logo.style.display = 'none';
+        this.updFavBtn();
+    },
+
+    updFavBtn() {
+        if (!this.channel) return;
+        const f = DB.isFav(this.channel.id);
+        const b = document.getElementById('btnFav');
+        b.querySelector('i').className = f ? 'fas fa-star' : 'far fa-star';
+        b.style.color = f ? 'var(--warn)' : '#fff';
+    },
+
+    showVol() {
+        const el = document.getElementById('volOsd');
+        document.getElementById('volFill').style.height = this.vol + '%';
+        document.getElementById('volTxt').textContent = (this.el.muted ? 0 : this.vol) + '%';
+        const ic = document.getElementById('volIcon');
+        ic.className = this.el.muted || this.vol===0 ? 'fas fa-volume-mute' : this.vol<50 ? 'fas fa-volume-down' : 'fas fa-volume-up';
+        el.classList.remove('hidden');
+        clearTimeout(this._vt);
+        this._vt = setTimeout(() => el.classList.add('hidden'), 2000);
+    },
+
+    showText(msg) {
+        const el = document.getElementById('textOsd');
+        el.textContent = msg;
+        el.classList.remove('hidden');
+        clearTimeout(this._tt);
+        this._tt = setTimeout(() => el.classList.add('hidden'), 2000);
+    },
+
+    showCtrl() {
+        document.getElementById('pCtrl').classList.remove('hide');
+        this.ctrlVis = true;
+        clearTimeout(this.ctrlT);
+        this.ctrlT = setTimeout(() => {
+            if (this.playing) { document.getElementById('pCtrl').classList.add('hide'); this.ctrlVis = false; }
+        }, 5000);
+    },
+
+    hideCtrl() { document.getElementById('pCtrl').classList.add('hide'); this.ctrlVis = false; },
+
+    onPlay() {
+        this.playing = true;
+        this.showLoad(false);
+        this.showErr(false);
+        this.retries = 0;
+        const b = document.getElementById('btnPP');
+        b.querySelector('i').className = 'fas fa-pause';
+        b.lastChild.textContent = 'Duraklat';
+        this.showCtrl();
+    },
+
+    onBuf() { this.showLoad(true); },
+
+    onErr() { this.handleErr(); },
+
+    handleErr() {
+        if (this.retries < this.maxRetry && this.channel) {
+            this.retries++;
+            this.showLoad(true);
+            this.retryT = setTimeout(() => {
+                this.destroy();
+                this.load(this.channel.url, this.channel.type).catch(() => this.handleErr());
+            }, 2000 * this.retries);
+        } else {
+            this.showErr(true, 'Yayın açılamadı. Kanal aktif olmayabilir.');
+        }
+    },
+
+    retry() { if (this.channel) { this.retries = 0; this.play(this.channel); } }
+};
+
+// =====================================================
+//  APP
+// =====================================================
+const APP = {
+    channels: [], filtered: [], cats: [],
+    curCat: 'all', curIdx: -1,
+    focusArea: 'grid', // grid | cats | player | minilist
+
+    async init() {
+        this.msg('Sistem hazırlanıyor...');
+        VID.init();
+        this.clock();
+        this.msg('Kanallar yükleniyor...');
+        await this.loadChannels();
+        this.bindEvents();
+        this.bindRemote();
+
+        // Show app
+        setTimeout(() => {
+            const s = document.getElementById('splash');
+            s.classList.add('fade');
+            setTimeout(() => { s.classList.add('hidden'); document.getElementById('app').classList.remove('hidden'); }, 600);
+            // Focus first card
+            setTimeout(() => this.focusCard(0), 400);
+        }, 1200);
+
+        // Fullscreen
+        try { if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{}); } catch(e) {}
+    },
+
+    msg(t) { const e = document.getElementById('splashMsg'); if(e) e.textContent = t; },
+
+    async loadChannels() {
+        const conf = DB.conf();
+        const cache = DB.cache();
+
+        if (cache && cache.data && (Date.now() - cache.ts < conf.interval)) {
+            this.channels = cache.data;
+            this.msg('Cache yüklendi');
+        } else {
+            try {
+                this.msg('M3U indiriliyor...');
+                const text = await fetchM3U(conf.url);
+                this.channels = parseM3U(text);
+                this.channels.forEach((c,i) => c.num = i+1);
+                DB.setCache(this.channels);
+                DB.saveConf({lastUp: Date.now()});
+                this.msg(this.channels.length + ' kanal yüklendi');
+            } catch(e) {
+                this.msg('Hata! Cache deneniyor...');
+                if (cache && cache.data) this.channels = cache.data;
+                else { this.channels = []; this.msg('Kanal yüklenemedi'); }
+            }
+        }
+
+        this.cats = getCategories(this.channels);
+        this.renderCats();
+        this.filter('all');
+        document.getElementById('chCount').textContent = this.channels.length + ' kanal';
+    },
+
+    renderCats() {
+        const bar = document.getElementById('catBar');
+        // Clear dynamic
+        bar.querySelectorAll('.cat-btn.dynamic').forEach(b => b.remove());
+        this.cats.forEach(c => {
+            const b = document.createElement('button');
+            b.className = 'cat-btn dynamic';
+            b.dataset.cat = c.name;
+            b.innerHTML = `<i class="fas ${c.icon}"></i> ${c.name} (${c.count})`;
+            bar.appendChild(b);
+        });
+    },
+
+    filter(cat) {
+        this.curCat = cat;
+        if (cat === 'all') this.filtered = [...this.channels];
+        else if (cat === 'favorites') this.filtered = this.channels.filter(c => DB.isFav(c.id));
+        else if (cat === 'recent') {
+            const r = DB.getRecent();
+            this.filtered = r.map(id => this.channels.find(c => c.id === id)).filter(Boolean);
+        } else {
+            this.filtered = this.channels.filter(c => c.group === cat);
+        }
+        this.renderGrid();
+        this.updateCatBtns();
+    },
+
+    renderGrid() {
+        const g = document.getElementById('grid');
+        const nd = document.getElementById('noData');
+
+        if (!this.filtered.length) { g.innerHTML = ''; nd.classList.remove('hidden'); return; }
+        nd.classList.add('hidden');
+
+        g.innerHTML = this.filtered.map((ch) => {
+            const fav = DB.isFav(ch.id) ? 'fav' : '';
+            const logo = ch.logo
+                ? `<img class="card-logo" src="${ch.logo}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+                : '';
+            const ph = `<div class="card-logo-ph" style="${ch.logo?'display:none':''}">${ch.name.charAt(0).toUpperCase()}</div>`;
+
+            return `<div class="card ${fav}" data-id="${ch.id}" data-idx="${ch.num}">
+                <span class="card-num">${ch.num}</span>
+                <span class="card-fav"><i class="fas fa-star"></i></span>
+                ${logo}${ph}
+                <div class="card-name">${ch.name}</div>
+                <span class="card-group">${ch.group}</span>
+            </div>`;
+        }).join('');
+    },
+
+    updateCatBtns() {
+        document.querySelectorAll('.cat-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.cat === this.curCat);
+        });
+    },
+
+    search(q) {
+        q = q.toLowerCase().trim();
+        if (!q) { this.filter(this.curCat); return; }
+        this.filtered = this.channels.filter(c =>
+            c.name.toLowerCase().includes(q) || c.group.toLowerCase().includes(q) || String(c.num).includes(q)
+        );
+        this.renderGrid();
+    },
+
+    // PLAY
+    async playChannel(id) {
+        const ch = this.channels.find(c => c.id === id);
+        if (!ch) return;
+        this.curIdx = this.filtered.findIndex(c => c.id === id);
+        document.getElementById('player').classList.remove('hidden');
+        document.getElementById('miniList').classList.add('hidden');
+        await VID.play(ch);
+        try { document.documentElement.requestFullscreen().catch(()=>{}); } catch(e) {}
+    },
+
+    nextCh() {
+        if (!this.filtered.length) return;
+        this.curIdx = (this.curIdx + 1) % this.filtered.length;
+        this.playChannel(this.filtered[this.curIdx].id);
+    },
+
+    prevCh() {
+        if (!this.filtered.length) return;
+        this.curIdx = (this.curIdx - 1 + this.filtered.length) % this.filtered.length;
+        this.playChannel(this.filtered[this.curIdx].id);
+    },
+
+    chByNum(n) { return this.channels.find(c => c.num === n); },
+
+    closePlayer() {
+        VID.stop();
+        document.getElementById('player').classList.add('hidden');
+        document.getElementById('miniList').classList.add('hidden');
+        this.focusArea = 'grid';
+    },
+
+    playerVisible() { return !document.getElementById('player').classList.contains('hidden'); },
+
+    // MINI LIST
+    toggleMini() {
+        const el = document.getElementById('miniList');
+        if (el.classList.contains('hidden')) {
+            this.renderMini();
+            el.classList.remove('hidden');
+            this.focusArea = 'minilist';
+        } else {
+            el.classList.add('hidden');
+            this.focusArea = 'player';
+        }
+    },
+
+    renderMini() {
+        const cur = VID.channel?.id;
+        document.getElementById('miniItems').innerHTML = this.filtered.map(ch => {
+            const act = ch.id === cur ? 'active' : '';
+            const img = ch.logo ? `<img src="${ch.logo}" onerror="this.style.display='none'">` :
+                `<div style="width:30px;height:30px;border-radius:6px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">${ch.name.charAt(0)}</div>`;
+            return `<div class="mini-item ${act}" data-id="${ch.id}">
+                <span class="mini-item-num">${ch.num}</span>
+                ${img}
+                <span class="mini-item-name">${ch.name}</span>
+            </div>`;
+        }).join('');
+    },
+
+    toggleFav() {
+        if (this.playerVisible() && VID.channel) {
+            const added = DB.toggleFav(VID.channel.id);
+            VID.updFavBtn();
+            VID.showText(added ? '⭐ Favorilere eklendi' : '☆ Favoriden çıkarıldı');
+        } else {
+            const fc = document.querySelector('.card.focused');
+            if (fc) {
+                const id = fc.dataset.id;
+                const added = DB.toggleFav(id);
+                fc.classList.toggle('fav', added);
+            }
+        }
+    },
+
+    // ADMIN
+    openAdmin() {
+        const pass = prompt('Admin Şifresi:');
+        if (pass !== DB.conf().pass) { if(pass!==null) alert('Yanlış şifre!'); return; }
+        this.renderAdmin();
+    },
+
+    closeAdmin() { const o = document.querySelector('.admin-overlay'); if(o) o.remove(); },
+
+    renderAdmin() {
+        this.closeAdmin();
+        const conf = DB.conf();
+        const cats = this.cats;
+
+        const ov = document.createElement('div');
+        ov.className = 'admin-overlay';
+        ov.innerHTML = `
+        <div class="admin-box">
+            <div class="admin-head">
+                <h2><i class="fas fa-cog"></i> Admin Panel</h2>
+                <button class="admin-close" onclick="APP.closeAdmin()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="admin-body">
+                <div class="admin-nav">
+                    <button class="active" onclick="APP.admSec('dash',this)"><i class="fas fa-tachometer-alt"></i> Dashboard</button>
+                    <button onclick="APP.admSec('playlist',this)"><i class="fas fa-list"></i> Playlist</button>
+                    <button onclick="APP.admSec('channels',this)"><i class="fas fa-tv"></i> Kanallar</button>
+                    <button onclick="APP.admSec('settings',this)"><i class="fas fa-sliders-h"></i> Ayarlar</button>
+                    <button onclick="APP.admSec('backup',this)"><i class="fas fa-database"></i> Yedekleme</button>
+                </div>
+                <div class="admin-content">
+                    <div class="admin-section active" id="adm-dash">
+                        <h3><i class="fas fa-tachometer-alt"></i> Dashboard</h3>
+                        <div class="stats">
+                            <div class="stat"><div class="stat-val" style="color:var(--accent)">${this.channels.length}</div><div class="stat-lbl">Toplam Kanal</div></div>
+                            <div class="stat"><div class="stat-val" style="color:var(--success)">${cats.length}</div><div class="stat-lbl">Kategori</div></div>
+                            <div class="stat"><div class="stat-val" style="color:var(--warn)">${DB.getFavs().length}</div><div class="stat-lbl">Favori</div></div>
+                            <div class="stat"><div class="stat-val" style="color:var(--accent2)">${DB.getRecent().length}</div><div class="stat-lbl">Son İzlenen</div></div>
+                        </div>
+                        <h3 style="margin-top:10px">Kategoriler</h3>
+                        <div style="margin-top:8px;max-height:300px;overflow-y:auto;">
+                            ${cats.map(c => `
+                                <div style="display:flex;justify-content:space-between;padding:6px 12px;border-bottom:1px solid var(--border);font-size:13px;">
+                                    <span><i class="fas ${c.icon}" style="color:var(--accent);width:18px;margin-right:6px"></i>${c.name}</span>
+                                    <span style="color:var(--text3)">${c.count}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <div class="admin-section" id="adm-playlist">
+                        <h3><i class="fas fa-list"></i> Playlist Ayarları</h3>
+                        <div class="fg">
+                            <label>M3U Playlist URL</label>
+                            <input type="url" id="aUrl" value="${conf.url}">
+                        </div>
+                        <div class="fg">
+                            <label>Güncelleme Aralığı</label>
+                            <select id="aInt">
+                                <option value="1800000" ${conf.interval==1800000?'selected':''}>30 dk</option>
+                                <option value="3600000" ${conf.interval==3600000?'selected':''}>1 saat</option>
+                                <option value="21600000" ${conf.interval==21600000?'selected':''}>6 saat</option>
+                                <option value="86400000" ${conf.interval==86400000?'selected':''}>24 saat</option>
+                            </select>
+                        </div>
+                        <div style="display:flex;gap:8px">
+                            <button class="btn btn-p" onclick="DB.saveConf({url:document.getElementById('aUrl').value,interval:+document.getElementById('aInt').value}); alert('Kaydedildi!')"><i class="fas fa-save"></i> Kaydet</button>
+                            <button class="btn btn-s" onclick="DB.del('cache'); alert('Cache temizlendi. Sayfa yenilenecek.'); location.reload()"><i class="fas fa-sync-alt"></i> Güncelle</button>
+                        </div>
+                        <div class="alert alert-info" style="margin-top:14px">
+                            <i class="fas fa-info-circle"></i>
+                            Son güncelleme: ${conf.lastUp ? new Date(conf.lastUp).toLocaleString('tr-TR') : 'Hiç'}
+                        </div>
+
+                        <h3 style="margin-top:20px"><i class="fas fa-plus-circle"></i> Manuel Kanal Ekle</h3>
+                        <div class="fg"><label>Kanal Adı</label><input id="mName" placeholder="Kanal adı"></div>
+                        <div class="fg"><label>URL</label><input id="mUrl" placeholder="http://..."></div>
+                        <div class="fg"><label>Kategori</label><input id="mGrp" value="Özel" placeholder="Kategori"></div>
+                        <div class="fg"><label>Logo URL</label><input id="mLogo" placeholder="https://..."></div>
+                        <button class="btn btn-p" onclick="APP.addManualCh()"><i class="fas fa-plus"></i> Ekle</button>
+                    </div>
+
+                    <div class="admin-section" id="adm-channels">
+                        <h3><i class="fas fa-tv"></i> Kanallar (${this.channels.length})</h3>
+                        <div class="fg"><input id="aChSearch" placeholder="Kanal ara..." oninput="APP.filterAdmCh(this.value)"></div>
+                        <div style="max-height:400px;overflow-y:auto" id="aChList">
+                            <table class="ch-tbl"><thead><tr><th>#</th><th>Logo</th><th>Ad</th><th>Kategori</th><th>Tür</th></tr></thead>
+                            <tbody id="aChBody"></tbody></table>
+                        </div>
+                    </div>
+
+                    <div class="admin-section" id="adm-settings">
+                        <h3><i class="fas fa-sliders-h"></i> Genel Ayarlar</h3>
+                        <div class="fg"><label>Admin Şifresi</label><input id="aPass" value="${conf.pass}"></div>
+                        <div class="fg"><label>Varsayılan Ses: <strong id="aVolV">${conf.vol}%</strong></label>
+                            <input type="range" id="aVol" min="0" max="100" value="${conf.vol}" style="width:100%" oninput="document.getElementById('aVolV').textContent=this.value+'%'">
+                        </div>
+                        <button class="btn btn-p" onclick="DB.saveConf({pass:document.getElementById('aPass').value,vol:+document.getElementById('aVol').value}); alert('Kaydedildi!')"><i class="fas fa-save"></i> Kaydet</button>
+                    </div>
+
+                    <div class="admin-section" id="adm-backup">
+                        <h3><i class="fas fa-database"></i> Veri Yönetimi</h3>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+                            <button class="btn btn-p" onclick="APP.exportData()"><i class="fas fa-download"></i> Dışa Aktar</button>
+                            <button class="btn btn-d" onclick="DB.del('cache'); alert('Cache temizlendi!')"><i class="fas fa-broom"></i> Cache Temizle</button>
+                            <button class="btn btn-d" onclick="if(confirm('TÜM veriler silinecek!')) { DB.clearAll(); location.reload(); }"><i class="fas fa-trash"></i> Tümünü Sıfırla</button>
+                        </div>
+                        <div class="alert alert-info"><i class="fas fa-info-circle"></i> Depolama: ~${(JSON.stringify(localStorage).length/1024).toFixed(1)} KB</div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+        document.body.appendChild(ov);
+
+        // Fill channel table
+        this.fillAdmCh(this.channels.slice(0,150));
+    },
+
+    admSec(name, btn) {
+        document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
+        document.querySelectorAll('.admin-nav button').forEach(b => b.classList.remove('active'));
+        document.getElementById('adm-'+name).classList.add('active');
+        btn.classList.add('active');
+    },
+
+    fillAdmCh(list) {
+        document.getElementById('aChBody').innerHTML = list.map(ch =>
+            `<tr><td>${ch.num}</td><td>${ch.logo?`<img src="${ch.logo}" onerror="this.style.display='none'">`:'—'}</td><td>${ch.name}</td><td>${ch.group}</td><td>${ch.type}</td></tr>`
+        ).join('');
+    },
+
+    filterAdmCh(q) {
+        q = q.toLowerCase();
+        this.fillAdmCh(this.channels.filter(c => c.name.toLowerCase().includes(q)||c.group.toLowerCase().includes(q)).slice(0,150));
+    },
+
+    addManualCh() {
+        const n = document.getElementById('mName').value.trim();
+        const u = document.getElementById('mUrl').value.trim();
+        if (!n||!u) { alert('Ad ve URL gerekli!'); return; }
+        const ch = {
+            id: n.toLowerCase().replace(/[^a-z0-9]/g,'_')+'_'+Date.now(),
+            num: this.channels.length+1, name: n, url: u,
+            group: document.getElementById('mGrp').value.trim()||'Özel',
+            logo: document.getElementById('mLogo').value.trim(), type: 'hls'
+        };
+        this.channels.push(ch);
+        DB.setCache(this.channels);
+        this.cats = getCategories(this.channels);
+        this.renderCats();
+        this.filter(this.curCat);
+        document.getElementById('mName').value = '';
+        document.getElementById('mUrl').value = '';
+        document.getElementById('mLogo').value = '';
+        alert('"'+n+'" eklendi!');
+    },
+
+    exportData() {
+        const d = {};
+        Object.keys(localStorage).filter(k=>k.startsWith('tivim_')).forEach(k => d[k.replace('tivim_','')]=JSON.parse(localStorage.getItem(k)));
+        const b = new Blob([JSON.stringify(d,null,2)], {type:'application/json'});
+        const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'tivim_backup.json'; a.click();
+    },
+
+    // CLOCK
+    clock() {
+        const upd = () => {
+            const t = new Date().toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'});
+            document.getElementById('clock').textContent = t;
+            document.getElementById('pClock').textContent = t;
+        };
+        upd(); setInterval(upd, 1000);
+    },
+
+    // =====================================================
+    //  FOCUS / NAVIGATION
+    // =====================================================
+    _fi: -1, // focused card index
+
+    focusCard(idx) {
+        const cards = document.querySelectorAll('#grid .card');
+        cards.forEach(c => c.classList.remove('focused'));
+        if (idx < 0 || idx >= cards.length) return;
+        this._fi = idx;
+        cards[idx].classList.add('focused');
+        cards[idx].scrollIntoView({behavior:'smooth', block:'nearest'});
+        this.focusArea = 'grid';
+    },
+
+    focusCat(dir) {
+        const btns = [...document.querySelectorAll('.cat-btn')];
+        let fi = btns.findIndex(b => b.classList.contains('focused'));
+        btns.forEach(b => b.classList.remove('focused'));
+
+        if (dir === 'right') fi = Math.min(btns.length-1, fi+1);
+        else fi = Math.max(0, fi-1);
+        if (fi < 0) fi = 0;
+
+        btns[fi].classList.add('focused');
+        btns[fi].scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+        this.focusArea = 'cats';
+    },
+
+    activateFocusedCat() {
+        const b = document.querySelector('.cat-btn.focused');
+        if (b) {
+            this.filter(b.dataset.cat);
+            setTimeout(() => this.focusCard(0), 50);
+        }
+    },
+
+    navGrid(dir) {
+        const cards = document.querySelectorAll('#grid .card');
+        if (!cards.length) return;
+
+        const g = document.getElementById('grid');
+        const cols = Math.max(1, Math.round(g.clientWidth / (cards[0].offsetWidth + 12)));
+        let fi = this._fi;
+        if (fi < 0) fi = 0;
+
+        switch(dir) {
+            case 'up':
+                if (fi < cols) { this.focusCatFromGrid(); return; }
+                fi -= cols; break;
+            case 'down': fi = Math.min(cards.length-1, fi+cols); break;
+            case 'left': fi = Math.max(0, fi-1); break;
+            case 'right': fi = Math.min(cards.length-1, fi+1); break;
+        }
+        this.focusCard(fi);
+    },
+
+    focusCatFromGrid() {
+        document.querySelectorAll('#grid .card').forEach(c => c.classList.remove('focused'));
+        const active = document.querySelector('.cat-btn.active') || document.querySelector('.cat-btn');
+        if (active) {
+            document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('focused'));
+            active.classList.add('focused');
+            this.focusArea = 'cats';
+        }
+    },
+
+    // Player focus
+    navPlayer(dir) {
+        const btns = [...document.querySelectorAll('.p-bottom .p-btn')];
+        let fi = btns.findIndex(b => b.classList.contains('focused'));
+        btns.forEach(b => b.classList.remove('focused'));
+
+        if (dir === 'left') fi = Math.max(0, fi-1);
+        else if (dir === 'right') fi = Math.min(btns.length-1, fi+1);
+        if (fi < 0) fi = 0;
+
+        btns[fi].classList.add('focused');
+    },
+
+    activatePlayerBtn() {
+        const b = document.querySelector('.p-btn.focused');
+        if (b) b.click();
+        else {
+            const r = document.querySelector('#btnRetry.focused, .p-error button');
+            if (r && !document.getElementById('pErr').classList.contains('hidden')) r.click();
+        }
+    },
+
+    navMini(dir) {
+        const items = [...document.querySelectorAll('.mini-item')];
+        if (!items.length) return;
+        let fi = items.findIndex(i => i.classList.contains('focused'));
+        items.forEach(i => i.classList.remove('focused'));
+
+        if (dir === 'up') fi = Math.max(0, fi-1);
+        else if (dir === 'down') fi = Math.min(items.length-1, fi+1);
+        else if (dir === 'left') { this.toggleMini(); return; }
+        if (fi < 0) fi = 0;
+
+        items[fi].classList.add('focused');
+        items[fi].scrollIntoView({behavior:'smooth',block:'nearest'});
+    },
+
+    activateMiniItem() {
+        const item = document.querySelector('.mini-item.focused');
+        if (item) { this.playChannel(item.dataset.id); this.toggleMini(); }
+    },
+
+    // =====================================================
+    //  EVENT BINDING
+    // =====================================================
+    bindEvents() {
+        // Search
+        const si = document.getElementById('searchInput');
+        let st;
+        si.addEventListener('input', e => { clearTimeout(st); st = setTimeout(() => this.search(e.target.value), 300); });
+
+        // Category clicks
+        document.getElementById('catBar').addEventListener('click', e => {
+            const b = e.target.closest('.cat-btn');
+            if (b) { this.filter(b.dataset.cat); setTimeout(() => this.focusCard(0), 50); }
+        });
+
+        // Card clicks
+        document.getElementById('grid').addEventListener('click', e => {
+            const c = e.target.closest('.card');
+            if (c) this.playChannel(c.dataset.id);
+        });
+
+        // Admin
+        document.getElementById('btnAdmin').addEventListener('click', () => this.openAdmin());
+
+        // Player buttons
+        document.getElementById('btnPP').addEventListener('click', () => VID.togglePP());
+        document.getElementById('btnNext').addEventListener('click', () => this.nextCh());
+        document.getElementById('btnPrev').addEventListener('click', () => this.prevCh());
+        document.getElementById('btnFav').addEventListener('click', () => this.toggleFav());
+        document.getElementById('btnRatio').addEventListener('click', () => VID.cycleAspect());
+        document.getElementById('btnStop').addEventListener('click', () => this.closePlayer());
+        document.getElementById('btnRetry').addEventListener('click', () => VID.retry());
+
+        // Player click = toggle controls
+        document.getElementById('vid').addEventListener('click', () => {
+            VID.ctrlVis ? VID.hideCtrl() : VID.showCtrl();
+        });
+
+        // Mini list click
+        document.getElementById('miniItems').addEventListener('click', e => {
+            const it = e.target.closest('.mini-item');
+            if (it) { this.playChannel(it.dataset.id); this.toggleMini(); }
+        });
+    },
+
+    // =====================================================
+    //  REMOTE CONTROL
+    // =====================================================
+    _numBuf: '', _numT: null,
+
+    bindRemote() {
+        document.addEventListener('keydown', e => {
+            const k = e.keyCode;
+
+            // Input focus
+            if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
+                if (k === 27 || k === 4) { document.activeElement.blur(); e.preventDefault(); return; }
+                if (k === 13 && document.activeElement.id === 'searchInput') {
+                    this.search(document.activeElement.value);
+                    document.activeElement.blur();
+                    e.preventDefault();
+                }
+                return;
+            }
+
+            e.preventDefault();
+
+            const inPlayer = this.playerVisible();
+            const miniOpen = !document.getElementById('miniList').classList.contains('hidden');
+            const adminOpen = !!document.querySelector('.admin-overlay');
+
+            // BACK
+            if ([27, 4, 8, 461].includes(k)) {
+                if (adminOpen) { this.closeAdmin(); return; }
+                if (miniOpen) { this.toggleMini(); return; }
+                if (inPlayer) { VID.ctrlVis ? VID.hideCtrl() : this.closePlayer(); return; }
+                if (document.getElementById('searchInput').value) {
+                    document.getElementById('searchInput').value = '';
+                    this.search('');
+                    return;
+                }
+                return;
+            }
+
+            if (adminOpen) return; // admin açıkken tuşları yoksay
+
+            // ARROWS
+            if (k === 38 || k === 19) { // UP
+                if (miniOpen) this.navMini('up');
+                else if (inPlayer && VID.ctrlVis) { /* do nothing on up in player */ }
+                else if (inPlayer && !VID.ctrlVis) { VID.showCtrl(); this.focusArea='player'; }
+                else if (this.focusArea === 'cats') { /* already top */ }
+                else this.navGrid('up');
+            }
+            else if (k === 40 || k === 20) { // DOWN
+                if (miniOpen) this.navMini('down');
+                else if (inPlayer && !VID.ctrlVis) { VID.showCtrl(); this.focusArea='player'; }
+                else if (inPlayer) { /* nothing */ }
+                else if (this.focusArea === 'cats') { this.focusCard(0); }
+                else this.navGrid('down');
+            }
+            else if (k === 37 || k === 21) { // LEFT
+                if (miniOpen) this.navMini('left');
+                else if (inPlayer && VID.ctrlVis) this.navPlayer('left');
+                else if (inPlayer && !VID.ctrlVis) { VID.showCtrl(); this.focusArea='player'; }
+                else if (this.focusArea === 'cats') this.focusCat('left');
+                else this.navGrid('left');
+            }
+            else if (k === 39 || k === 22) { // RIGHT
+                if (miniOpen) { /* nothing */ }
+                else if (inPlayer && VID.ctrlVis) this.navPlayer('right');
+                else if (inPlayer && !VID.ctrlVis) { VID.showCtrl(); this.focusArea='player'; }
+                else if (this.focusArea === 'cats') this.focusCat('right');
+                else this.navGrid('right');
+            }
+
+            // OK / ENTER
+            else if ([13, 23, 66].includes(k)) {
+                if (miniOpen) this.activateMiniItem();
+                else if (inPlayer && VID.ctrlVis) this.activatePlayerBtn();
+                else if (inPlayer && !VID.ctrlVis) { VID.showCtrl(); this.focusArea='player'; }
+                else if (this.focusArea === 'cats') this.activateFocusedCat();
+                else {
+                    const fc = document.querySelector('.card.focused');
+                    if (fc) this.playChannel(fc.dataset.id);
+                }
+            }
+
+            // VOLUME
+            else if ([175, 24].includes(k)) VID.volUp();
+            else if ([174, 25].includes(k)) VID.volDown();
+            else if ([173, 164].includes(k)) VID.toggleMute();
+
+            // CH +/-
+            else if ([33, 166].includes(k)) { if(inPlayer) this.nextCh(); }
+            else if ([34, 167].includes(k)) { if(inPlayer) this.prevCh(); }
+
+            // PLAY/PAUSE
+            else if ([179, 85, 415].includes(k)) { if(inPlayer) VID.togglePP(); }
+            else if ([178, 86].includes(k)) { if(inPlayer) this.closePlayer(); }
+
+            // NUMBER KEYS
+            else if (this.isNum(k)) { this.handleNum(this.toNum(k)); }
+
+            // SEARCH
+            else if ([217, 84].includes(k)) { document.getElementById('searchInput').focus(); }
+
+            // FAV
+            else if ([182, 364, 405].includes(k)) this.toggleFav(); // Yellow or bookmark
+
+            // MENU
+            else if ([93, 82].includes(k)) this.openAdmin();
+
+            // INFO
+            else if ([457, 165].includes(k)) { if(inPlayer) VID.showCtrl(); }
+
+            // GUIDE / BLUE
+            else if ([458, 172, 406].includes(k)) { if(inPlayer) this.toggleMini(); }
+
+            // RED = fullscreen
+            else if ([403].includes(k)) { try{document.documentElement.requestFullscreen().catch(()=>{});}catch(e){} }
+
+            // GREEN = aspect
+            else if ([404].includes(k)) { if(inPlayer) VID.cycleAspect(); }
+        });
+    },
+
+    isNum(k) { return (k>=48&&k<=57)||(k>=96&&k<=105); },
+    toNum(k) { return k>=96 ? k-96 : k-48; },
+
+    handleNum(n) {
+        this._numBuf += n;
+        if (this.playerVisible()) {
+            document.getElementById('osdNum').textContent = this._numBuf;
+            const ch = this.chByNum(parseInt(this._numBuf));
+            document.getElementById('osdName').textContent = ch ? ch.name : '';
+            document.getElementById('chOsd').classList.remove('hidden');
+        }
+        clearTimeout(this._numT);
+        this._numT = setTimeout(() => {
+            const ch = this.chByNum(parseInt(this._numBuf));
+            if (ch) this.playChannel(ch.id);
+            this._numBuf = '';
+            document.getElementById('chOsd').classList.add('hidden');
+        }, 2000);
+    }
+};
+
+// START
+document.addEventListener('DOMContentLoaded', () => APP.init());
+</script>
+</body>
+</html>        <header class="top-bar" id="topBar">
             <div class="top-bar-left">
                 <div class="logo">
                     <i class="fas fa-tv"></i>
