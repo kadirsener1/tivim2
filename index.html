@@ -1,1 +1,198 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TİVİM - Canlı TV</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/remote.css">
+    <!-- HLS.js - Her türlü video stream desteği -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <!-- DASH desteği -->
+    <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+    <!-- FLV desteği -->
+    <script src="https://cdn.jsdelivr.net/npm/flv.js@latest/dist/flv.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Splash Screen -->
+    <div id="splashScreen" class="splash-screen">
+        <div class="splash-content">
+            <div class="splash-logo">
+                <i class="fas fa-tv"></i>
+            </div>
+            <h1>TİVİM</h1>
+            <p>Kanallar yükleniyor...</p>
+            <div class="splash-loader">
+                <div class="loader-bar"></div>
+            </div>
+            <span class="splash-status" id="splashStatus">Başlatılıyor...</span>
+        </div>
+    </div>
 
+    <!-- Ana Uygulama -->
+    <div id="app" class="app hidden">
+        <!-- Üst Bar -->
+        <header class="top-bar" id="topBar">
+            <div class="top-bar-left">
+                <div class="logo">
+                    <i class="fas fa-tv"></i>
+                    <span>TİVİM</span>
+                </div>
+            </div>
+            <div class="top-bar-center">
+                <div class="search-box" id="searchBox">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="searchInput" placeholder="Kanal ara..." autocomplete="off">
+                    <kbd>OK tuşu ile ara</kbd>
+                </div>
+            </div>
+            <div class="top-bar-right">
+                <div class="clock" id="clock"></div>
+                <div class="channel-count" id="channelCount">0 Kanal</div>
+                <button class="btn-admin" id="btnAdmin" data-focusable="true">
+                    <i class="fas fa-cog"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Kategori Bar -->
+        <nav class="category-bar" id="categoryBar">
+            <div class="category-scroll" id="categoryScroll">
+                <button class="category-btn active" data-category="all" data-focusable="true" data-focus-group="categories">
+                    <i class="fas fa-globe"></i>
+                    <span>Tümü</span>
+                </button>
+                <button class="category-btn" data-category="favorites" data-focusable="true" data-focus-group="categories">
+                    <i class="fas fa-star"></i>
+                    <span>Favoriler</span>
+                </button>
+                <button class="category-btn" data-category="recent" data-focusable="true" data-focus-group="categories">
+                    <i class="fas fa-history"></i>
+                    <span>Son İzlenen</span>
+                </button>
+                <!-- Dinamik kategoriler buraya eklenecek -->
+            </div>
+        </nav>
+
+        <!-- Kanal Listesi -->
+        <main class="main-content" id="mainContent">
+            <div class="channel-grid" id="channelGrid">
+                <!-- Kanallar dinamik olarak yüklenecek -->
+            </div>
+            <div class="no-results hidden" id="noResults">
+                <i class="fas fa-search"></i>
+                <h3>Kanal bulunamadı</h3>
+                <p>Farklı bir arama terimi deneyin</p>
+            </div>
+        </main>
+
+        <!-- Alt Bilgi Bar -->
+        <footer class="bottom-bar" id="bottomBar">
+            <div class="remote-hints">
+                <span><kbd>◄►</kbd> Kategori</span>
+                <span><kbd>▲▼</kbd> Gezin</span>
+                <span><kbd>OK</kbd> İzle</span>
+                <span><kbd>★</kbd> Favori</span>
+                <span><kbd>↩</kbd> Geri</span>
+                <span><kbd>🔍</kbd> Ara</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Video Player Overlay -->
+    <div id="playerOverlay" class="player-overlay hidden">
+        <!-- Video Container -->
+        <div class="video-container" id="videoContainer">
+            <video id="videoPlayer" autoplay playsinline></video>
+            <div class="player-loading" id="playerLoading">
+                <div class="spinner"></div>
+                <span>Yükleniyor...</span>
+            </div>
+            <div class="player-error hidden" id="playerError">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span id="errorMessage">Yayın açılamadı</span>
+                <button id="retryBtn" data-focusable="true">Tekrar Dene</button>
+            </div>
+        </div>
+
+        <!-- Player Controls -->
+        <div class="player-controls" id="playerControls">
+            <div class="player-top-info">
+                <div class="now-playing">
+                    <img id="playerChannelLogo" src="" alt="" class="player-channel-logo">
+                    <div class="player-channel-info">
+                        <h2 id="playerChannelName">Kanal Adı</h2>
+                        <span id="playerChannelCategory">Kategori</span>
+                    </div>
+                </div>
+                <div class="player-time" id="playerTime"></div>
+            </div>
+            <div class="player-bottom-controls">
+                <button class="player-btn" id="btnPrevChannel" data-focusable="true" data-focus-group="player">
+                    <i class="fas fa-backward-step"></i>
+                    <span>Önceki</span>
+                </button>
+                <button class="player-btn" id="btnPlayPause" data-focusable="true" data-focus-group="player">
+                    <i class="fas fa-pause"></i>
+                    <span>Duraklat</span>
+                </button>
+                <button class="player-btn" id="btnNextChannel" data-focusable="true" data-focus-group="player">
+                    <i class="fas fa-forward-step"></i>
+                    <span>Sonraki</span>
+                </button>
+                <button class="player-btn" id="btnToggleFav" data-focusable="true" data-focus-group="player">
+                    <i class="fas fa-star"></i>
+                    <span>Favori</span>
+                </button>
+                <button class="player-btn" id="btnAspectRatio" data-focusable="true" data-focus-group="player">
+                    <i class="fas fa-expand"></i>
+                    <span>Ekran</span>
+                </button>
+                <button class="player-btn" id="btnStop" data-focusable="true" data-focus-group="player">
+                    <i class="fas fa-stop"></i>
+                    <span>Kapat</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Channel Quick Switch -->
+        <div class="channel-switch hidden" id="channelSwitch">
+            <div class="switch-number" id="switchNumber"></div>
+            <div class="switch-name" id="switchName"></div>
+        </div>
+
+        <!-- Volume Indicator -->
+        <div class="volume-indicator hidden" id="volumeIndicator">
+            <i class="fas fa-volume-up"></i>
+            <div class="volume-bar">
+                <div class="volume-level" id="volumeLevel"></div>
+            </div>
+            <span id="volumeText">100%</span>
+        </div>
+
+        <!-- Mini Channel List -->
+        <div class="mini-channel-list hidden" id="miniChannelList">
+            <h3>Kanallar</h3>
+            <div class="mini-list-content" id="miniListContent"></div>
+        </div>
+    </div>
+
+    <!-- EPG / Program Rehberi -->
+    <div id="epgOverlay" class="epg-overlay hidden">
+        <div class="epg-container">
+            <h2><i class="fas fa-calendar-alt"></i> Program Rehberi</h2>
+            <div class="epg-content" id="epgContent">
+                <p>Program bilgisi bulunmuyor</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/storage.js"></script>
+    <script src="js/parser.js"></script>
+    <script src="js/player.js"></script>
+    <script src="js/remote.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
