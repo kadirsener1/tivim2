@@ -3,58 +3,61 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TV Panel</title>
+<title>TIVIM PRO</title>
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.7"></script>
 
 <style>
 body{margin:0;background:#0c0e14;color:#fff;font-family:sans-serif}
+#cats{display:flex;overflow-x:auto;padding:10px;gap:6px}
+.cat{padding:6px 12px;background:#1e2235;border-radius:20px;cursor:pointer;white-space:nowrap}
+.cat.foc{outline:2px solid #4a7aff}
+
 #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;padding:10px}
 .card{background:#1e2235;padding:10px;border-radius:10px;text-align:center;cursor:pointer}
 .card.foc{outline:2px solid #4a7aff;transform:scale(1.05)}
-video{width:100%;height:100%;background:black}
-#player{position:fixed;inset:0;display:none}
-#panel{position:fixed;top:10px;right:10px;background:#111;padding:10px;border-radius:10px;display:none}
-button{padding:5px 10px}
+
+#player{position:fixed;inset:0;background:#000;display:none}
+video{width:100%;height:100%}
 </style>
 </head>
 
 <body>
 
+<div id="cats"></div>
 <div id="grid"></div>
 
 <div id="player">
 <video id="video" autoplay></video>
 </div>
 
-<div id="panel">
-<h3>Admin</h3>
-<input id="url" style="width:200px"><br><br>
-<button onclick="save()">Kaydet</button>
-</div>
-
 <script>
-const M3U_URL="https://raw.githubusercontent.com/kadirsener1/tivim/refs/heads/main/merged.m3u"
+const URL="https://raw.githubusercontent.com/kadirsener1/tivim/refs/heads/main/merged.m3u"
 
 const video=document.getElementById("video")
+
 let hls=null
 let channels=[]
-let index=0
+let filtered=[]
+let cats=[]
+let fi=0
+let navMode="grid"
+let curIndex=0
 
 /* ================= PARSER ================= */
 function parseM3U(text){
  const lines=text.split("\n")
- let list=[]
- let info=null
+ let list=[],info=null
 
- lines.forEach(line=>{
-  if(line.startsWith("#EXTINF")){
+ lines.forEach(l=>{
+  if(l.startsWith("#EXTINF")){
    info={
-    name:line.split(",")[1]||"Kanal",
-    group:(line.match(/group-title="(.*?)"/)||[])[1]||"Diğer"
+    name:l.split(",")[1]||"Kanal",
+    group:(l.match(/group-title="(.*?)"/)||[])[1]||"Diğer"
    }
-  }else if(line && !line.startsWith("#") && info){
-   list.push({...info,url:line})
+  }
+  else if(l && !l.startsWith("#") && info){
+   list.push({...info,url:l})
    info=null
   }
  })
@@ -63,50 +66,117 @@ function parseM3U(text){
 
 /* ================= LOAD ================= */
 async function load(){
- const txt=await fetch(M3U_URL).then(r=>r.text())
+ const txt=await fetch(URL).then(r=>r.text())
  channels=parseM3U(txt)
- render()
+ filtered=[...channels]
+ buildCats()
+ renderCats()
+ renderGrid()
 }
 
-/* ================= RENDER ================= */
-function render(){
+/* ================= CATS ================= */
+function buildCats(){
+ const map={}
+ channels.forEach(c=>{
+  map[c.group]=(map[c.group]||0)+1
+ })
+ cats=Object.keys(map)
+}
+
+function renderCats(){
+ const el=document.getElementById("cats")
+ el.innerHTML=""
+
+ cats.forEach(c=>{
+  const b=document.createElement("div")
+  b.className="cat"
+  b.innerText=c
+  b.onclick=()=>filterCat(c)
+  el.appendChild(b)
+ })
+}
+
+/* ================= FILTER ================= */
+function filterCat(c){
+ filtered=channels.filter(x=>x.group===c)
+ renderGrid()
+ setTimeout(()=>focusCard(0),50)
+}
+
+/* ================= GRID ================= */
+function renderGrid(){
  const g=document.getElementById("grid")
  g.innerHTML=""
 
- channels.slice(0,300).forEach((c,i)=>{
+ filtered.slice(0,300).forEach((ch,i)=>{
   const d=document.createElement("div")
   d.className="card"
-  d.innerText=c.name
+  d.innerText=ch.name
   d.onclick=()=>play(i)
   g.appendChild(d)
  })
- focus(0)
 }
 
 /* ================= PLAYER ================= */
-function play(i){
- index=i
- const ch=channels[i]
+const preloadMap=new Map()
+
+function preload(ch){
+ if(preloadMap.has(ch.url)) return
+
+ const v=document.createElement("video")
+ v.muted=true
+
+ if(Hls.isSupported() && ch.url.includes(".m3u8")){
+  const h=new Hls()
+  h.loadSource(ch.url)
+  h.attachMedia(v)
+  preloadMap.set(ch.url,{v,h})
+ }else{
+  v.src=ch.url
+  v.load()
+  preloadMap.set(ch.url,{v})
+ }
+}
+
+async function play(i){
+ curIndex=i
+ const ch=filtered[i]
 
  document.getElementById("player").style.display="block"
 
  if(hls){hls.destroy();hls=null}
 
- if(Hls.isSupported() && ch.url.includes(".m3u8")){
-  hls=new Hls()
-  hls.loadSource(ch.url)
-  hls.attachMedia(video)
+ const pre=preloadMap.get(ch.url)
+
+ if(pre){
+  if(pre.hls){
+   hls=pre.hls
+   hls.attachMedia(video)
+  }else{
+   video.src=pre.v.src
+  }
+  preloadMap.delete(ch.url)
  }else{
-  video.src=ch.url
+  if(Hls.isSupported() && ch.url.includes(".m3u8")){
+   hls=new Hls()
+   hls.loadSource(ch.url)
+   hls.attachMedia(video)
+  }else{
+   video.src=ch.url
+  }
  }
 
  video.play()
+
+ // preload next
+ setTimeout(()=>{
+  if(filtered[i+1]) preload(filtered[i+1])
+  if(filtered[i-1]) preload(filtered[i-1])
+ },300)
 }
 
 /* ================= NAV ================= */
-let fi=0
-
-function focus(i){
+function focusCard(i){
  const cards=document.querySelectorAll(".card")
  cards.forEach(c=>c.classList.remove("foc"))
  if(cards[i]){
@@ -116,36 +186,32 @@ function focus(i){
  fi=i
 }
 
-/* ================= KEY CONTROL ================= */
+/* ================= REMOTE ================= */
+let lock=false
+
 document.addEventListener("keydown",e=>{
+ if(lock)return
+ lock=true
+ setTimeout(()=>lock=false,80)
+
  const cards=document.querySelectorAll(".card")
 
- if(e.key==="ArrowRight") focus(Math.min(cards.length-1,fi+1))
- if(e.key==="ArrowLeft") focus(Math.max(0,fi-1))
- if(e.key==="ArrowDown") focus(Math.min(cards.length-1,fi+6))
- if(e.key==="ArrowUp") focus(Math.max(0,fi-6))
+ if(e.key==="ArrowRight") focusCard(Math.min(cards.length-1,fi+1))
+ if(e.key==="ArrowLeft") focusCard(Math.max(0,fi-1))
+ if(e.key==="ArrowDown") focusCard(Math.min(cards.length-1,fi+6))
+ if(e.key==="ArrowUp") focusCard(Math.max(0,fi-6))
 
- if(e.key==="Enter"){
-  play(fi)
- }
+ if(e.key==="Enter") play(fi)
 
- if(e.key==="Backspace" || e.key==="Escape"){
+ if(e.key==="Escape" || e.key==="Backspace"){
   document.getElementById("player").style.display="none"
   video.pause()
  }
 
- if(e.key==="a"){ // admin
-  const pass=prompt("Şifre:")
-  if(pass==="1234"){
-   document.getElementById("panel").style.display="block"
-   document.getElementById("url").value=M3U_URL
-  }
- }
+ // kanal zap
+ if(e.key==="PageDown") play((curIndex+1)%filtered.length)
+ if(e.key==="PageUp") play((curIndex-1+filtered.length)%filtered.length)
 })
-
-function save(){
- alert("Kaydedildi (demo)")
-}
 
 /* ================= START ================= */
 load()
