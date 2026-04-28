@@ -982,7 +982,7 @@ input,select{font-family:var(--fb);}
             <div class="cache-card">
               <div class="cache-info">
                 <h4>🔴 Kanal Durum Kontrolü</h4>
-                <p id="statusCheckInfo">İlk 20 kanalı kontrol eder</p>
+                <p id="statusCheckInfo">İlk 100 kanalı kontrol eder</p>
               </div>
               <div class="cache-actions">
                 <button class="btn btn-acc" onclick="checkChannelStatus()">Kontrol Et</button>
@@ -2149,7 +2149,7 @@ function initSwipe(){
 // KANAL DURUM KONTROLÜ
 // ════════════════════════════════════════
 async function checkChannelStatus(){
-  const chs=merged().slice(0,20);
+  const chs=merged().slice(0,100);
   toast('🔍 '+chs.length+' kanal kontrol ediliyor…','🔍');
   document.getElementById('statusCheckInfo').textContent='Kontrol ediliyor…';
   offlineChs.clear();
