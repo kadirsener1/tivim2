@@ -249,215 +249,780 @@
 </div>
 
 <script>
-const $=id=>document.getElementById(id)
-
-/* ================= STORAGE ================= */
+/* ===================================================================
+   STORAGE
+   =================================================================== */
 const S={
- p:'tv_',
- g:(k,d=null)=>{try{let v=localStorage.getItem('tv_'+k);return v?JSON.parse(v):d}catch(e){return d}},
- s:(k,v)=>localStorage.setItem('tv_'+k,JSON.stringify(v)),
- favs(){return this.g('f',[])},
- tFav(id){let f=this.favs();let i=f.indexOf(id);i>-1?f.splice(i,1):f.push(id);this.s('f',f);return i===-1},
- isFav(id){return this.favs().includes(id)}
-}
+    p:'tv_',
+    g(k,d=null){try{const v=localStorage.getItem(this.p+k);return v?JSON.parse(v):d}catch(e){return d}},
+    s(k,v){try{localStorage.setItem(this.p+k,JSON.stringify(v))}catch(e){}},
+    d(k){localStorage.removeItem(this.p+k)},
+    favs(){return this.g('f',[])},
+    tFav(id){let f=this.favs();const i=f.indexOf(id);if(i>-1)f.splice(i,1);else f.push(id);this.s('f',f);return i===-1},
+    isFav(id){return this.favs().includes(id)},
+    rec(){return this.g('r',[])},
+    aRec(id){let r=this.rec().filter(x=>x!==id);r.unshift(id);this.s('r',r.slice(0,50))},
+    cf(){return this.g('c',{url:'https://raw.githubusercontent.com/kadirsener1/tivim/refs/heads/main/merged.m3u',pass:'admin123',vol:100,interval:3600000,lastUp:null})},
+    sCf(c){this.s('c',{...this.cf(),...c})},
+    ca(){return this.g('cache',null)},
+    sCa(d){this.s('cache',{d:d,t:Date.now()})},
+    clr(){Object.keys(localStorage).filter(k=>k.startsWith(this.p)).forEach(k=>localStorage.removeItem(k))}
+};
 
-/* ================= PARSER ================= */
-function parseM3U(t){
- const l=t.split('\n')
- const ch=[]
- let info=null
+/* ===================================================================
+   M3U PARSER  - Header & URL desteği ile
+   =================================================================== */
+function parseM3U(text){
+    const ls=text.split('\n').map(l=>l.trim()).filter(l=>l);
+    const chs=[];
+    let info=null,extraHeaders={},kodiProps={};
 
- for(let i=0;i<l.length;i++){
-  let line=l[i].trim()
+    for(let i=0;i<ls.length;i++){
+        const L=ls[i];
 
-  if(line.startsWith('#EXTINF')){
-    info={
-     name:(line.split(',')[1]||'Kanal').trim(),
-     group:(line.match(/group-title="(.*?)"/)||[])[1]||'Diğer',
-     logo:(line.match(/tvg-logo="(.*?)"/)||[])[1]||''
+        if(L.startsWith('#EXTINF:')){
+            info={};extraHeaders={};kodiProps={};
+            const m=t=>{const r=L.match(new RegExp(t+'="([^"]*)"','i'));return r?r[1]:''};
+            info.logo=m('tvg-logo');
+            info.group=m('group-title')||'Diğer';
+            info.tvgId=m('tvg-id');
+            info.tvgName=m('tvg-name');
+
+            // http-referrer / http-user-agent in EXTINF
+            const ref=m('http-referrer')||m('http-referer');
+            if(ref) extraHeaders['Referer']=ref;
+            const ua=m('http-user-agent');
+            if(ua) extraHeaders['User-Agent']=ua;
+
+            const nm=L.match(/,\s*(.+)$/);
+            info.name=nm?nm[1].trim():'Kanal '+(chs.length+1);
+        }
+        else if(L.startsWith('#EXTVLCOPT:')){
+            // #EXTVLCOPT:http-referrer=xxx
+            const m=L.match(/#EXTVLCOPT:(.+?)=(.+)/i);
+            if(m){
+                const k=m[1].trim().toLowerCase(),v=m[2].trim();
+                if(k.includes('referrer')||k.includes('referer')) extraHeaders['Referer']=v;
+                else if(k.includes('user-agent')) extraHeaders['User-Agent']=v;
+                else if(k.includes('origin')) extraHeaders['Origin']=v;
+            }
+        }
+        else if(L.startsWith('#KODIPROP:')){
+            // #KODIPROP:inputstream.adaptive.stream_headers=Referer=xxx
+            const m=L.match(/#KODIPROP:(.+?)=(.+)/i);
+            if(m){
+                const k=m[1].trim().toLowerCase(),v=m[2].trim();
+                if(k.includes('stream_headers')){
+                    // Parse "key=value&key2=value2"
+                    v.split('&').forEach(p=>{
+                        const [hk,...hv]=p.split('=');
+                        if(hk&&hv.length) extraHeaders[hk.trim()]=hv.join('=').trim();
+                    });
+                }
+                if(k.includes('license_key')) kodiProps.licenseKey=v;
+            }
+        }
+        else if(!L.startsWith('#')&&info){
+            let url=L;
+
+            // URL'de headers parametresi var mı? (base64 encoded)
+            let urlHeaders={...extraHeaders};
+            try{
+                const u=new URL(url);
+                const hParam=u.searchParams.get('headers');
+                if(hParam){
+                    try{
+                        const decoded=JSON.parse(atob(hParam));
+                        Object.assign(urlHeaders,decoded);
+                    }catch(e2){
+                        try{
+                            const decoded=JSON.parse(decodeURIComponent(hParam));
+                            Object.assign(urlHeaders,decoded);
+                        }catch(e3){
+                            try{ Object.assign(urlHeaders,JSON.parse(hParam)); }catch(e4){}
+                        }
+                    }
+                }
+            }catch(e){}
+
+            let type='hls';
+            const ul=url.toLowerCase();
+            if(ul.includes('.mpd'))type='dash';
+            else if(ul.includes('.flv'))type='flv';
+            else if(ul.includes('.mp4')&&!ul.includes('.m3u'))type='mp4';
+
+            chs.push({
+                id:(info.name||'c').toLowerCase().replace(/[^a-z0-9]/g,'_').slice(0,25)+'_'+chs.length,
+                num:chs.length+1,
+                name:info.name,url,type,
+                logo:info.logo,group:info.group,
+                tvgId:info.tvgId,
+                headers:urlHeaders,
+                kodiProps
+            });
+            info=null;extraHeaders={};kodiProps={};
+        }
     }
-  }
-  else if(line && !line.startsWith('#') && info){
-    ch.push({
-     id:info.name.replace(/\W/g,'_')+i,
-     name:info.name,
-     group:info.group,
-     logo:info.logo,
-     url:line,
-     num:ch.length+1
-    })
-    info=null
-  }
- }
- return ch
+    return chs;
 }
 
-/* ================= PLAYER ================= */
+async function fetchM3U(url){
+    const px=[
+        url,
+        'https://api.allorigins.win/raw?url='+encodeURIComponent(url),
+        'https://corsproxy.io/?'+encodeURIComponent(url),
+        'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(url)
+    ];
+    for(const p of px){
+        try{
+            const r=await fetch(p,{headers:{'Accept':'*/*'}});
+            if(r.ok){const t=await r.text();if(t.length>20)return t;}
+        }catch(e){continue}
+    }
+    throw new Error('M3U indirilemedi');
+}
+
+function catIcon(g){
+    const c=g.toLowerCase();
+    const m={haber:'fa-newspaper',news:'fa-newspaper',spor:'fa-futbol',sport:'fa-futbol',sports:'fa-futbol',sinema:'fa-film',film:'fa-film',movie:'fa-film',dizi:'fa-tv',series:'fa-tv',müzik:'fa-music',music:'fa-music',çocuk:'fa-child',kids:'fa-child',belgesel:'fa-earth-americas',documentary:'fa-earth-americas',eğlence:'fa-masks-theater',entertainment:'fa-masks-theater',din:'fa-mosque',radyo:'fa-radio',radio:'fa-radio',ulusal:'fa-flag',national:'fa-flag',tr:'fa-flag','türk':'fa-flag'};
+    for(const[k,v]of Object.entries(m))if(c.includes(k))return v;
+    return'fa-layer-group';
+}
+
+function getCats(chs){
+    const m=new Map();
+    chs.forEach(c=>{if(!m.has(c.group))m.set(c.group,{name:c.group,cnt:0,icon:catIcon(c.group)});m.get(c.group).cnt++});
+    return[...m.values()].sort((a,b)=>b.cnt-a.cnt);
+}
+
+/* ===================================================================
+   VIDEO PLAYER - Gelişmiş header desteği
+   =================================================================== */
 const V={
- el:null,hls:null,ch:null,retry:0,
+    el:null,hls:null,ch:null,playing:false,
+    vol:100,asp:0,asps:['','cover','stretch'],
+    retry:0,maxR:4,rT:null,
+    cT:null,cVis:true,
 
- init(){
-  this.el=$('vid')
- },
+    init(){
+        this.el=$('vid');
+        this.vol=S.cf().vol||100;
+        this.el.volume=this.vol/100;
+        this.el.addEventListener('playing',()=>this.onPlay());
+        this.el.addEventListener('waiting',()=>this.onBuf());
+        this.el.addEventListener('error',()=>this.onFail());
+        this.el.addEventListener('pause',()=>{
+            $('bPP').querySelector('i').className='fas fa-play';
+            $('bPP').lastChild.textContent='Oynat';
+        });
+    },
 
- async play(ch){
-  this.stop()
-  this.ch=ch
-  $('player').classList.remove('hidden')
-  $('pL').classList.remove('hidden')
+    async play(ch){
+        this.ch=ch;this.retry=0;
+        this.kill();
+        this.showL(true);this.showE(false);
+        this.updUI(ch);
+        S.aRec(ch.id);
+        console.log('▶️',ch.name,'|',ch.type,'|',ch.url);
+        if(Object.keys(ch.headers||{}).length)console.log('📋 Headers:',ch.headers);
+        try{await this.load(ch)}catch(e){console.error('Play fail:',e);this.fail()}
+    },
 
-  try{
-   await this.load(ch.url)
-   $('pL').classList.add('hidden')
-  }catch(e){
-   this.fail()
-  }
- },
+    async load(ch){
+        const url=ch.url;
+        const headers=ch.headers||{};
+        const hasHeaders=Object.keys(headers).length>0;
 
- async load(url){
-  const isHls=url.includes('.m3u8')
+        // Her zaman önce HLS dene
+        if(Hls.isSupported()){
+            return new Promise((ok,no)=>{
+                const cfg={
+                    enableWorker: true,
+                lowLatencyMode: true,
+                backBufferLength: 90,
+                maxBufferLength: 60,
+                maxMaxBufferLength: 120,
+                fragLoadingMaxRetry: 10,
+                manifestLoadingMaxRetry: 8,
+                levelLoadingMaxRetry: 8,
+                xhrSetup: (xhr) => {
+                        // Custom headers ekle
+                        if(headers['Referer']){
+                            try{xhr.setRequestHeader('Referer',headers['Referer'])}catch(e){}
+                        }
+                        if(headers['Origin']){
+                            try{xhr.setRequestHeader('Origin',headers['Origin'])}catch(e){}
+                        }
+                        if(headers['User-Agent']){
+                            try{xhr.setRequestHeader('User-Agent',headers['User-Agent'])}catch(e){}
+                        }
+                        // Diğer tüm headerlar
+                        Object.entries(headers).forEach(([k,v])=>{
+                            if(!['Referer','Origin','User-Agent'].includes(k)){
+                                try{xhr.setRequestHeader(k,v)}catch(e){}
+                            }
+                        });
+                    }
+                };
 
-  if(Hls.isSupported() && isHls){
-   return new Promise((ok,no)=>{
-    const h=new Hls({
-     maxBufferLength:60,
-     fragLoadingMaxRetry:10,
-     manifestLoadingMaxRetry:8
-    })
+                const h=new Hls(cfg);
 
-    let done=false
+                h.loadSource(url);
+                h.attachMedia(this.el);
 
-    h.loadSource(url)
-    h.attachMedia(this.el)
+                let resolved=false;
 
-    h.on(Hls.Events.MANIFEST_PARSED,()=>{
-     this.el.play().then(()=>{
-      done=true;ok()
-     }).catch(()=>{
-      this.el.muted=true
-      this.el.play().then(()=>{
-       done=true;ok()
-      }).catch(no)
-     })
-    })
+                h.on(Hls.Events.MANIFEST_PARSED,(ev,data)=>{
+                    console.log('✅ HLS manifest parsed, levels:',data.levels.length);
+                    this.el.play().then(()=>{resolved=true;ok()}).catch(e=>{
+                        // Autoplay blocked - try muted
+                        this.el.muted=true;
+                        this.el.play().then(()=>{resolved=true;ok()}).catch(no);
+                    });
+                });
 
-    h.on(Hls.Events.ERROR,(e,d)=>{
-     if(d.fatal){
-      h.destroy()
-      if(!done){
-       this.loadDirect(url).then(ok).catch(no)
-      }
-     }
-    })
+                h.on(Hls.Events.ERROR,(ev,data)=>{
+                    console.warn('HLS Error:',data.type,data.details,data.fatal);
+                    if(data.fatal){
+                        switch(data.type){
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                if(this.retry<2){h.startLoad();this.retry++;return;}
+                                h.destroy();
+                                if(!resolved)no(new Error('network'));
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                h.recoverMediaError();
+                                break;
+                            default:
+                                h.destroy();
+                                if(!resolved)no(new Error(data.details));
+                                break;
+                        }
+                    }
+                });
 
-    this.hls=h
+                this.hls=h;
 
-    setTimeout(()=>{
-     if(!done){
-      h.destroy()
-      this.loadDirect(url).then(ok).catch(no)
-     }
-    },20000)
-   })
-  }
+                // Timeout - 20 saniye sonra hala yüklenmediyse
+                setTimeout(()=>{
+                    if(!resolved){
+                        console.warn('HLS timeout');
+                        h.destroy();
+                        this.hls=null;
+                        no(new Error('timeout'));
+                    }
+                },20000);
+            });
+        }
 
-  return this.loadDirect(url)
- },
+        // Native HLS (Safari)
+        if(this.el.canPlayType('application/vnd.apple.mpegurl')){
+            return new Promise((ok,no)=>{
+                this.el.src=url;
+                this.el.addEventListener('loadedmetadata',()=>this.el.play().then(ok).catch(no),{once:true});
+                this.el.addEventListener('error',()=>no(new Error('native hls fail')),{once:true});
+            });
+        }
 
- loadDirect(url){
-  return new Promise((ok,no)=>{
-   this.el.src=url
-   this.el.oncanplay=()=>this.el.play().then(ok).catch(no)
-   this.el.onerror=()=>no()
-  })
- },
+        // Direct
+        return this.loadDirect(url);
+    },
 
- stop(){
-  if(this.hls){this.hls.destroy();this.hls=null}
-  this.el.src=''
- },
+    loadDirect(url){
+        return new Promise((ok,no)=>{
+            this.el.src=url;
+            this.el.addEventListener('canplay',()=>this.el.play().then(ok).catch(no),{once:true});
+            this.el.addEventListener('error',()=>no(new Error('direct fail')),{once:true});
+            this.el.load();
+        });
+    },
 
- fail(){
-  $('pL').classList.add('hidden')
-  $('pE').classList.remove('hidden')
- }
-}
+    kill(){
+        if(this.hls){this.hls.destroy();this.hls=null}
+        this.el.removeAttribute('src');
+        this.el.load();
+        clearTimeout(this.rT);
+    },
 
-/* ================= APP ================= */
+    stop(){this.kill();this.ch=null;this.playing=false},
+    tPP(){this.el.paused?this.el.play():this.el.pause()},
+
+    sVol(v){
+        this.vol=Math.max(0,Math.min(100,v));
+        this.el.volume=this.vol/100;
+        this.el.muted=this.vol===0;
+        S.sCf({vol:this.vol});
+        this.showVol();
+    },
+    vUp(){this.sVol(this.vol+5)},
+    vDn(){this.sVol(this.vol-5)},
+    tMute(){this.el.muted=!this.el.muted;this.showVol()},
+
+    cyAsp(){
+        this.asp=(this.asp+1)%this.asps.length;
+        this.el.className=this.asps[this.asp];
+        this.showTxt('Ekran: '+['Sığdır','Doldur','Ger'][this.asp]);
+    },
+
+    showL(b){$('pL').classList.toggle('hidden',!b)},
+    showE(b,msg){$('pE').classList.toggle('hidden',!b);if(msg)$('pEM').textContent=msg;if(b)this.showL(false)},
+
+    updUI(ch){
+        $('pNm').textContent=ch.name;
+        $('pCt').textContent=ch.group;
+        const lg=$('pLg');
+        if(ch.logo){lg.src=ch.logo;lg.style.display='block';lg.onerror=()=>lg.style.display='none'}
+        else lg.style.display='none';
+        this.updFav();
+    },
+
+    updFav(){
+        if(!this.ch)return;
+        const f=S.isFav(this.ch.id);
+        const b=$('bFav');
+        b.querySelector('i').className=f?'fas fa-star':'far fa-star';
+        b.style.color=f?'var(--ylw)':'#fff';
+    },
+
+    showVol(){
+        const e=$('osdV');
+        $('vFl').style.height=this.vol+'%';
+        $('vTx').textContent=(this.el.muted?0:this.vol)+'%';
+        $('vIc').className=this.el.muted||this.vol===0?'fas fa-volume-mute':this.vol<50?'fas fa-volume-down':'fas fa-volume-up';
+        e.classList.remove('hidden');
+        clearTimeout(this._vt);
+        this._vt=setTimeout(()=>e.classList.add('hidden'),2000);
+    },
+
+    showTxt(m){
+        const e=$('osdT');e.textContent=m;e.classList.remove('hidden');
+        clearTimeout(this._tt);this._tt=setTimeout(()=>e.classList.add('hidden'),2000);
+    },
+
+    showC(){
+        $('pC').classList.remove('hid');this.cVis=true;
+        clearTimeout(this.cT);
+        this.cT=setTimeout(()=>{if(this.playing){$('pC').classList.add('hid');this.cVis=false}},5000);
+    },
+    hideC(){$('pC').classList.add('hid');this.cVis=false},
+
+    onPlay(){
+        this.playing=true;this.showL(false);this.showE(false);this.retry=0;
+        $('bPP').querySelector('i').className='fas fa-pause';
+        $('bPP').lastChild.textContent='Duraklat';
+        this.showC();
+    },
+    onBuf(){this.showL(true)},
+    onFail(){this.fail()},
+
+    fail(){
+        if(this.retry<this.maxR&&this.ch){
+            this.retry++;
+            console.log('🔄 Retry',this.retry+'/'+this.maxR);
+            this.showL(true);
+            this.rT=setTimeout(()=>{
+                this.kill();
+                // Son denemede direct dene
+                const p = this.retry>=this.maxR-1 ? this.loadDirect(this.ch.url) : this.load(this.ch);
+                p.catch(()=>this.fail());
+            },2000*this.retry);
+        }else{
+            this.showE(true,'Yayın açılamadı. Kanal aktif olmayabilir.');
+        }
+    },
+
+    retr(){if(this.ch){this.retry=0;this.play(this.ch)}}
+};
+
+function $(id){return document.getElementById(id)}
+
+/* ===================================================================
+   APP
+   =================================================================== */
 const A={
- chs:[],flt:[],fi:0,
+    chs:[],flt:[],cats:[],
+    curC:'all',curI:-1,
+    area:'grid',_fi:-1,
 
- async init(){
-  V.init()
+    async init(){
+        msg('Sistem hazırlanıyor...');
+        V.init();
+        this.clk();
+        msg('Kanallar yükleniyor...');
+        await this.loadChs();
+        this.bind();
+        this.bindRC();
 
-  const txt=await fetch("https://iptv-org.github.io/iptv/index.m3u").then(r=>r.text())
-  this.chs=parseM3U(txt)
-  this.flt=[...this.chs]
+        setTimeout(()=>{
+            const sp=$('splash');
+            sp.classList.add('fade');
+            setTimeout(()=>{sp.classList.add('hidden');$('app').classList.remove('hidden')},600);
+            setTimeout(()=>this.focCard(0),400);
+        },1200);
 
-  this.render()
-  this.bind()
- },
+        try{if(!document.fullscreenElement)document.documentElement.requestFullscreen().catch(()=>{})}catch(e){}
+    },
 
- render(){
-  const g=$('grd')
-  const frag=document.createDocumentFragment()
+    async loadChs(){
+        const cf=S.cf(),ca=S.ca();
+        if(ca&&ca.d&&(Date.now()-ca.t<cf.interval)){
+            this.chs=ca.d;msg('Cache yüklendi');
+        }else{
+            try{
+                msg('M3U indiriliyor...');
+                const txt=await fetchM3U(cf.url);
+                this.chs=parseM3U(txt);
+                this.chs.forEach((c,i)=>c.num=i+1);
+                S.sCa(this.chs);S.sCf({lastUp:Date.now()});
+                msg(this.chs.length+' kanal yüklendi');
+            }catch(e){
+                msg('Hata! Cache deneniyor...');
+                if(ca&&ca.d)this.chs=ca.d;
+                else{this.chs=[];msg('Kanal yüklenemedi')}
+            }
+        }
+        this.cats=getCats(this.chs);
+        this.renderCats();
+        this.filter('all');
+        $('chCnt').textContent=this.chs.length+' kanal';
+    },
 
-  this.flt.slice(0,300).forEach(ch=>{
-   const d=document.createElement('div')
-   d.className='crd'
-   d.dataset.id=ch.id
+    renderCats(){
+        const bar=$('catBar');
+        bar.querySelectorAll('.cat.dyn').forEach(b=>b.remove());
+        this.cats.forEach(c=>{
+            const b=document.createElement('button');
+            b.className='cat dyn';b.dataset.c=c.name;
+            b.innerHTML=`<i class="fas ${c.icon}"></i> ${c.name} (${c.cnt})`;
+            bar.appendChild(b);
+        });
+    },
 
-   d.innerHTML=`
-    <span class="crd-n">${ch.num}</span>
-    ${ch.logo?`<img class="crd-img" src="${ch.logo}">`:`<div class="crd-ph">${ch.name[0]}</div>`}
-    <div class="crd-nm">${ch.name}</div>
-   `
-   frag.appendChild(d)
-  })
+    filter(c){
+        this.curC=c;
+        if(c==='all')this.flt=[...this.chs];
+        else if(c==='favs')this.flt=this.chs.filter(x=>S.isFav(x.id));
+        else if(c==='recent'){const r=S.rec();this.flt=r.map(id=>this.chs.find(x=>x.id===id)).filter(Boolean)}
+        else this.flt=this.chs.filter(x=>x.group===c);
+        this.renderGrid();this.updCats();
+    },
 
-  g.innerHTML=''
-  g.appendChild(frag)
- },
+    renderGrid(){
+        const g=$('grd'),nd=$('noD');
+        if(!this.flt.length){g.innerHTML='';nd.classList.remove('hidden');return}
+        nd.classList.add('hidden');
+        g.innerHTML=this.flt.map(ch=>{
+            const fv=S.isFav(ch.id)?'fav':'';
+            const logo=ch.logo?`<img class="crd-img" src="${ch.logo}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:'';
+            const ph=`<div class="crd-ph" style="${ch.logo?'display:none':''}">${ch.name.charAt(0).toUpperCase()}</div>`;
+            return`<div class="crd ${fv}" data-id="${ch.id}"><span class="crd-n">${ch.num}</span><span class="crd-f"><i class="fas fa-star"></i></span>${logo}${ph}<div class="crd-nm">${ch.name}</div><span class="crd-gr">${ch.group}</span></div>`;
+        }).join('');
+    },
 
- play(id){
-  const ch=this.chs.find(c=>c.id===id)
-  if(ch)V.play(ch)
- },
+    updCats(){
+        document.querySelectorAll('.cat').forEach(b=>b.classList.toggle('act',b.dataset.c===this.curC));
+    },
 
- bind(){
-  $('grd').onclick=e=>{
-   const c=e.target.closest('.crd')
-   if(c)this.play(c.dataset.id)
-  }
+    search(q){
+        q=q.toLowerCase().trim();
+        if(!q){this.filter(this.curC);return}
+        this.flt=this.chs.filter(c=>c.name.toLowerCase().includes(q)||c.group.toLowerCase().includes(q)||String(c.num).includes(q));
+        this.renderGrid();
+    },
 
-  // NAV FIX
-  let last=0
-  document.addEventListener('keydown',e=>{
-   if(Date.now()-last<80)return
-   last=Date.now()
+    async playCh(id){
+        const ch=this.chs.find(c=>c.id===id);if(!ch)return;
+        this.curI=this.flt.findIndex(c=>c.id===id);
+        $('player').classList.remove('hidden');
+        $('mL').classList.add('hidden');
+        await V.play(ch);
+    },
 
-   const cards=[...document.querySelectorAll('.crd')]
+    nextCh(){if(!this.flt.length)return;this.curI=(this.curI+1)%this.flt.length;this.playCh(this.flt[this.curI].id)},
+    prevCh(){if(!this.flt.length)return;this.curI=(this.curI-1+this.flt.length)%this.flt.length;this.playCh(this.flt[this.curI].id)},
+    chByNum(n){return this.chs.find(c=>c.num===n)},
+    closeP(){V.stop();$('player').classList.add('hidden');$('mL').classList.add('hidden');this.area='grid'},
+    pVis(){return!$('player').classList.contains('hidden')},
 
-   if(e.key==="ArrowRight")this.fi=Math.min(cards.length-1,this.fi+1)
-   if(e.key==="ArrowLeft")this.fi=Math.max(0,this.fi-1)
-   if(e.key==="ArrowDown")this.fi=Math.min(cards.length-1,this.fi+5)
-   if(e.key==="ArrowUp")this.fi=Math.max(0,this.fi-5)
+    tMini(){
+        const e=$('mL');
+        if(e.classList.contains('hidden')){this.renderMini();e.classList.remove('hidden');this.area='mini'}
+        else{e.classList.add('hidden');this.area='player'}
+    },
 
-   cards.forEach(c=>c.classList.remove('foc'))
-   if(cards[this.fi]){
-    cards[this.fi].classList.add('foc')
-    cards[this.fi].scrollIntoView({block:'nearest'})
-   }
+    renderMini(){
+        const cur=V.ch?.id;
+        $('mLi').innerHTML=this.flt.map(ch=>{
+            const a=ch.id===cur?'act':'';
+            const img=ch.logo?`<img src="${ch.logo}" onerror="this.style.display='none'">`:`<div style="width:26px;height:26px;border-radius:5px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;color:#fff">${ch.name.charAt(0)}</div>`;
+            return`<div class="mi ${a}" data-id="${ch.id}"><span class="mi-n">${ch.num}</span>${img}<span class="mi-nm">${ch.name}</span></div>`;
+        }).join('');
+    },
 
-   if(e.key==="Enter"){
-    const el=cards[this.fi]
-    if(el)this.play(el.dataset.id)
-   }
-  })
- }
+    tFav(){
+        if(this.pVis()&&V.ch){
+            const a=S.tFav(V.ch.id);V.updFav();
+            V.showTxt(a?'⭐ Favorilere eklendi':'☆ Favoriden çıkarıldı');
+        }else{
+            const fc=document.querySelector('.crd.foc');
+            if(fc){const id=fc.dataset.id;const a=S.tFav(id);fc.classList.toggle('fav',a)}
+        }
+    },
+
+    // ADMIN
+    openAdm(){
+        const p=prompt('Admin Şifresi:');
+        if(p!==S.cf().pass){if(p!==null)alert('Yanlış şifre!');return}
+        this.renderAdm();
+    },
+    closeAdm(){const o=document.querySelector('.adm-ov');if(o)o.remove()},
+
+    renderAdm(){
+        this.closeAdm();
+        const cf=S.cf(),cats=this.cats;
+        const ov=document.createElement('div');ov.className='adm-ov';
+        ov.innerHTML=`<div class="adm-box"><div class="adm-hd"><h2><i class="fas fa-cog"></i> Admin Panel</h2><button class="adm-cl" onclick="A.closeAdm()"><i class="fas fa-times"></i></button></div><div class="adm-bd"><div class="adm-nv"><button class="act" onclick="admS('dash',this)"><i class="fas fa-tachometer-alt"></i> Dashboard</button><button onclick="admS('pl',this)"><i class="fas fa-list"></i> Playlist</button><button onclick="admS('ch',this)"><i class="fas fa-tv"></i> Kanallar</button><button onclick="admS('set',this)"><i class="fas fa-sliders-h"></i> Ayarlar</button><button onclick="admS('bk',this)"><i class="fas fa-database"></i> Yedekleme</button></div><div class="adm-ct"><div class="adm-s act" id="a-dash"><h3><i class="fas fa-tachometer-alt"></i> Dashboard</h3><div class="sts"><div class="st"><div class="st-v" style="color:var(--acc)">${this.chs.length}</div><div class="st-l">Toplam Kanal</div></div><div class="st"><div class="st-v" style="color:var(--grn)">${cats.length}</div><div class="st-l">Kategori</div></div><div class="st"><div class="st-v" style="color:var(--ylw)">${S.favs().length}</div><div class="st-l">Favori</div></div><div class="st"><div class="st-v" style="color:var(--acc2)">${S.rec().length}</div><div class="st-l">Son İzlenen</div></div></div><h3>Kategoriler</h3><div style="margin-top:6px;max-height:260px;overflow-y:auto">${cats.map(c=>`<div style="display:flex;justify-content:space-between;padding:5px 10px;border-bottom:1px solid var(--brd);font-size:12px"><span><i class="fas ${c.icon}" style="color:var(--acc);width:16px;margin-right:5px"></i>${c.name}</span><span style="color:var(--txt3)">${c.cnt}</span></div>`).join('')}</div></div><div class="adm-s" id="a-pl"><h3><i class="fas fa-list"></i> Playlist</h3><div class="fg"><label>M3U URL</label><input id="aUrl" value="${cf.url}"></div><div class="fg"><label>Güncelleme Aralığı</label><select id="aInt"><option value="1800000" ${cf.interval==1800000?'selected':''}>30 dk</option><option value="3600000" ${cf.interval==3600000?'selected':''}>1 saat</option><option value="21600000" ${cf.interval==21600000?'selected':''}>6 saat</option><option value="86400000" ${cf.interval==86400000?'selected':''}>24 saat</option></select></div><div style="display:flex;gap:6px"><button class="btn btn-p" onclick="S.sCf({url:$('aUrl').value,interval:+$('aInt').value});alert('Kaydedildi!')"><i class="fas fa-save"></i> Kaydet</button><button class="btn btn-s" onclick="S.d('cache');alert('Sayfa yenilenecek');location.reload()"><i class="fas fa-sync-alt"></i> Güncelle</button></div><div class="alr alr-i" style="margin-top:10px"><i class="fas fa-info-circle"></i>Son güncelleme: ${cf.lastUp?new Date(cf.lastUp).toLocaleString('tr-TR'):'Hiç'}</div><h3 style="margin-top:16px"><i class="fas fa-plus-circle"></i> Manuel Kanal</h3><div class="fg"><label>Kanal Adı</label><input id="mNm" placeholder="Ad"></div><div class="fg"><label>URL</label><input id="mUr" placeholder="http://..."></div><div class="fg"><label>Kategori</label><input id="mGr" value="Özel"></div><div class="fg"><label>Logo</label><input id="mLo" placeholder="https://..."></div><div class="fg"><label>Referer Header (opsiyonel)</label><input id="mRef" placeholder="https://example.com/"></div><button class="btn btn-p" onclick="A.addCh()"><i class="fas fa-plus"></i> Ekle</button></div><div class="adm-s" id="a-ch"><h3><i class="fas fa-tv"></i> Kanallar (${this.chs.length})</h3><div class="fg"><input id="aSrc" placeholder="Ara..." oninput="A.fltAdm(this.value)"></div><div style="max-height:350px;overflow-y:auto" id="aChL"></div></div><div class="adm-s" id="a-set"><h3><i class="fas fa-sliders-h"></i> Ayarlar</h3><div class="fg"><label>Admin Şifresi</label><input id="aPas" value="${cf.pass}"></div><div class="fg"><label>Varsayılan Ses: <b id="aVoV">${cf.vol}%</b></label><input type="range" id="aVol" min="0" max="100" value="${cf.vol}" style="width:100%" oninput="$('aVoV').textContent=this.value+'%'"></div><button class="btn btn-p" onclick="S.sCf({pass:$('aPas').value,vol:+$('aVol').value});alert('Kaydedildi!')"><i class="fas fa-save"></i> Kaydet</button></div><div class="adm-s" id="a-bk"><h3><i class="fas fa-database"></i> Yedekleme</h3><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"><button class="btn btn-p" onclick="A.exp()"><i class="fas fa-download"></i> Dışa Aktar</button><button class="btn btn-d" onclick="S.d('cache');alert('Cache temizlendi!')"><i class="fas fa-broom"></i> Cache Temizle</button><button class="btn btn-d" onclick="if(confirm('TÜM veriler silinecek!')){S.clr();location.reload()}"><i class="fas fa-trash"></i> Sıfırla</button></div><div class="alr alr-i"><i class="fas fa-info-circle"></i>Depolama: ~${(JSON.stringify(localStorage).length/1024).toFixed(1)} KB</div></div></div></div></div>`;
+        document.body.appendChild(ov);
+        this.fillAdm(this.chs.slice(0,150));
+    },
+
+    fillAdm(list){
+        const el=$('aChL');if(!el)return;
+        el.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:12px">${list.map(c=>`<tr style="border-bottom:1px solid var(--brd)"><td style="padding:5px 8px;color:var(--txt3)">${c.num}</td><td style="padding:5px">${c.logo?`<img src="${c.logo}" style="width:22px;height:22px;border-radius:3px;object-fit:contain;vertical-align:middle" onerror="this.style.display='none'">`:'—'}</td><td style="padding:5px">${c.name}</td><td style="padding:5px;color:var(--txt3)">${c.group}</td><td style="padding:5px;color:var(--txt3)">${c.type}</td><td style="padding:5px;color:var(--txt3)">${Object.keys(c.headers||{}).length?'🔒':''}</td></tr>`).join('')}</table>`;
+    },
+    fltAdm(q){q=q.toLowerCase();this.fillAdm(this.chs.filter(c=>c.name.toLowerCase().includes(q)||c.group.toLowerCase().includes(q)).slice(0,150))},
+
+    addCh(){
+        const n=$('mNm').value.trim(),u=$('mUr').value.trim();
+        if(!n||!u){alert('Ad ve URL gerekli!');return}
+        const headers={};
+        const ref=$('mRef').value.trim();
+        if(ref)headers['Referer']=ref;
+
+        const ch={id:n.toLowerCase().replace(/[^a-z0-9]/g,'_')+'_'+Date.now(),num:this.chs.length+1,name:n,url:u,group:$('mGr').value.trim()||'Özel',logo:$('mLo').value.trim(),type:'hls',headers};
+        this.chs.push(ch);S.sCa(this.chs);
+        this.cats=getCats(this.chs);this.renderCats();this.filter(this.curC);
+        $('mNm').value='';$('mUr').value='';$('mLo').value='';$('mRef').value='';
+        alert('"'+n+'" eklendi!');
+    },
+
+    exp(){
+        const d={};Object.keys(localStorage).filter(k=>k.startsWith('tv_')).forEach(k=>d[k.replace('tv_','')]=JSON.parse(localStorage.getItem(k)));
+        const b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});
+        const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='tivim_backup.json';a.click();
+    },
+
+    clk(){
+        const u=()=>{const t=new Date().toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'});$('clk').textContent=t;$('pClk').textContent=t};
+        u();setInterval(u,1000);
+    },
+
+    // ====== NAVIGATION ======
+    focCard(i){
+        const cards=document.querySelectorAll('#grd .crd');
+        cards.forEach(c=>c.classList.remove('foc'));
+        if(i<0||i>=cards.length)return;
+        this._fi=i;cards[i].classList.add('foc');
+        cards[i].scrollIntoView({behavior:'smooth',block:'nearest'});
+        this.area='grid';
+    },
+
+    focCat(dir){
+        const bs=[...document.querySelectorAll('.cat')];
+        let fi=bs.findIndex(b=>b.classList.contains('foc'));
+        bs.forEach(b=>b.classList.remove('foc'));
+        if(dir==='r')fi=Math.min(bs.length-1,fi+1);else fi=Math.max(0,fi-1);
+        if(fi<0)fi=0;
+        bs[fi].classList.add('foc');bs[fi].scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+        this.area='cats';
+    },
+
+    actCat(){
+        const b=document.querySelector('.cat.foc');
+        if(b){this.filter(b.dataset.c);setTimeout(()=>this.focCard(0),50)}
+    },
+
+    navG(d){
+        const cards=document.querySelectorAll('#grd .crd');
+        if(!cards.length)return;
+        const cols=Math.max(1,Math.round($('grd').clientWidth/(cards[0].offsetWidth+10)));
+        let fi=this._fi;if(fi<0)fi=0;
+        switch(d){
+            case'u':if(fi<cols){this.toCats();return}fi-=cols;break;
+            case'd':fi=Math.min(cards.length-1,fi+cols);break;
+            case'l':fi=Math.max(0,fi-1);break;
+            case'r':fi=Math.min(cards.length-1,fi+1);break;
+        }
+        this.focCard(fi);
+    },
+
+    toCats(){
+        document.querySelectorAll('#grd .crd').forEach(c=>c.classList.remove('foc'));
+        const a=document.querySelector('.cat.act')||document.querySelector('.cat');
+        if(a){document.querySelectorAll('.cat').forEach(b=>b.classList.remove('foc'));a.classList.add('foc');this.area='cats'}
+    },
+
+    navP(d){
+        const bs=[...$('pC').querySelectorAll('.pb')];
+        let fi=bs.findIndex(b=>b.classList.contains('foc'));
+        bs.forEach(b=>b.classList.remove('foc'));
+        if(d==='l')fi=Math.max(0,fi-1);else if(d==='r')fi=Math.min(bs.length-1,fi+1);
+        if(fi<0)fi=0;
+        bs[fi].classList.add('foc');
+    },
+
+    actP(){const b=document.querySelector('.pb.foc');if(b)b.click()},
+
+    navM(d){
+        const its=[...document.querySelectorAll('.mi')];if(!its.length)return;
+        let fi=its.findIndex(i=>i.classList.contains('foc'));
+        its.forEach(i=>i.classList.remove('foc'));
+        if(d==='u')fi=Math.max(0,fi-1);else if(d==='d')fi=Math.min(its.length-1,fi+1);else if(d==='l'){this.tMini();return}
+        if(fi<0)fi=0;
+        its[fi].classList.add('foc');its[fi].scrollIntoView({behavior:'smooth',block:'nearest'});
+    },
+
+    actM(){const it=document.querySelector('.mi.foc');if(it){this.playCh(it.dataset.id);this.tMini()}},
+
+    // ====== EVENTS ======
+    bind(){
+        let st;
+        $('srcIn').addEventListener('input',e=>{clearTimeout(st);st=setTimeout(()=>this.search(e.target.value),300)});
+        $('catBar').addEventListener('click',e=>{const b=e.target.closest('.cat');if(b){this.filter(b.dataset.c);setTimeout(()=>this.focCard(0),50)}});
+        $('grd').addEventListener('click',e=>{const c=e.target.closest('.crd');if(c)this.playCh(c.dataset.id)});
+        $('btnAdm').addEventListener('click',()=>this.openAdm());
+        $('bPP').addEventListener('click',()=>V.tPP());
+        $('bNxt').addEventListener('click',()=>this.nextCh());
+        $('bPrv').addEventListener('click',()=>this.prevCh());
+        $('bFav').addEventListener('click',()=>this.tFav());
+        $('bRat').addEventListener('click',()=>V.cyAsp());
+        $('bStp').addEventListener('click',()=>this.closeP());
+        $('btnRt').addEventListener('click',()=>V.retr());
+        $('vid').addEventListener('click',()=>{V.cVis?V.hideC():V.showC()});
+        $('mLi').addEventListener('click',e=>{const it=e.target.closest('.mi');if(it){this.playCh(it.dataset.id);this.tMini()}});
+    },
+
+    // ====== REMOTE CONTROL ======
+    _nb:'',_nt:null,
+
+    bindRC(){
+        document.addEventListener('keydown',e=>{
+            const k=e.keyCode;
+            // Input focus
+            if(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA'||document.activeElement.tagName==='SELECT'){
+                if(k===27||k===4){document.activeElement.blur();e.preventDefault();return}
+                if(k===13&&document.activeElement.id==='srcIn'){this.search(document.activeElement.value);document.activeElement.blur();e.preventDefault()}
+                return;
+            }
+            e.preventDefault();
+
+            const pv=this.pVis(),mo=!$('mL').classList.contains('hidden'),ao=!!document.querySelector('.adm-ov');
+
+            // BACK
+            if([27,4,8,461].includes(k)){
+                if(ao){this.closeAdm();return}
+                if(mo){this.tMini();return}
+                if(pv){V.cVis?V.hideC():this.closeP();return}
+                if($('srcIn').value){$('srcIn').value='';this.search('');return}
+                return;
+            }
+            if(ao)return;
+
+            // ARROWS
+            if([38,19].includes(k)){
+                if(mo)this.navM('u');
+                else if(pv&&!V.cVis){V.showC();this.area='player'}
+                else if(pv){}
+                else if(this.area==='cats'){}
+                else this.navG('u');
+            }
+            else if([40,20].includes(k)){
+                if(mo)this.navM('d');
+                else if(pv&&!V.cVis){V.showC();this.area='player'}
+                else if(pv){}
+                else if(this.area==='cats')this.focCard(0);
+                else this.navG('d');
+            }
+            else if([37,21].includes(k)){
+                if(mo)this.navM('l');
+                else if(pv&&V.cVis)this.navP('l');
+                else if(pv&&!V.cVis){V.showC();this.area='player'}
+                else if(this.area==='cats')this.focCat('l');
+                else this.navG('l');
+            }
+            else if([39,22].includes(k)){
+                if(mo){}
+                else if(pv&&V.cVis)this.navP('r');
+                else if(pv&&!V.cVis){V.showC();this.area='player'}
+                else if(this.area==='cats')this.focCat('r');
+                else this.navG('r');
+            }
+            // OK
+            else if([13,23,66].includes(k)){
+                if(mo)this.actM();
+                else if(pv&&V.cVis)this.actP();
+                else if(pv&&!V.cVis){V.showC();this.area='player'}
+                else if(this.area==='cats')this.actCat();
+                else{const fc=document.querySelector('.crd.foc');if(fc)this.playCh(fc.dataset.id)}
+            }
+            // VOL
+            else if([175,24].includes(k))V.vUp();
+            else if([174,25].includes(k))V.vDn();
+            else if([173,164].includes(k))V.tMute();
+            // CH
+            else if([33,166].includes(k)){if(pv)this.nextCh()}
+            else if([34,167].includes(k)){if(pv)this.prevCh()}
+            // PLAY/PAUSE
+            else if([179,85,415].includes(k)){if(pv)V.tPP()}
+            else if([178,86].includes(k)){if(pv)this.closeP()}
+            // NUMBERS
+            else if(this.isN(k))this.hNum(this.toN(k));
+            // SEARCH
+            else if([217,84].includes(k))$('srcIn').focus();
+            // FAV
+            else if([182,364,405].includes(k))this.tFav();
+            // MENU
+            else if([93,82].includes(k))this.openAdm();
+            // INFO
+            else if([457,165].includes(k)){if(pv)V.showC()}
+            // GUIDE/BLUE
+            else if([458,172,406].includes(k)){if(pv)this.tMini()}
+            // RED
+            else if([403].includes(k)){try{document.documentElement.requestFullscreen().catch(()=>{})}catch(e){}}
+            // GREEN
+            else if([404].includes(k)){if(pv)V.cyAsp()}
+        });
+    },
+
+    isN(k){return(k>=48&&k<=57)||(k>=96&&k<=105)},
+    toN(k){return k>=96?k-96:k-48},
+    hNum(n){
+        this._nb+=n;
+        if(this.pVis()){
+            $('osdN').textContent=this._nb;
+            const ch=this.chByNum(parseInt(this._nb));
+            $('osdNm').textContent=ch?ch.name:'';
+            $('osdCh').classList.remove('hidden');
+        }
+        clearTimeout(this._nt);
+        this._nt=setTimeout(()=>{
+            const ch=this.chByNum(parseInt(this._nb));
+            if(ch)this.playCh(ch.id);
+            this._nb='';$('osdCh').classList.add('hidden');
+        },2000);
+    }
+};
+
+function admS(n,btn){
+    document.querySelectorAll('.adm-s').forEach(s=>s.classList.remove('act'));
+    document.querySelectorAll('.adm-nv button').forEach(b=>b.classList.remove('act'));
+    const el=document.getElementById('a-'+n);if(el)el.classList.add('act');
+    btn.classList.add('act');
 }
 
-document.addEventListener('DOMContentLoaded',()=>A.init())
+function msg(t){const e=$('spMsg');if(e)e.textContent=t}
+
+document.addEventListener('DOMContentLoaded',()=>A.init());
 </script>
 </body>
 </html>
