@@ -104,17 +104,35 @@ function filterCat(c){
 }
 
 /* ================= GRID ================= */
-function renderGrid(){
- const g=document.getElementById("grid")
- g.innerHTML=""
+renderGrid(){
+ const g=$('grd'),nd=$('noD')
 
- filtered.slice(0,300).forEach((ch,i)=>{
-  const d=document.createElement("div")
-  d.className="card"
-  d.innerText=ch.name
-  d.onclick=()=>play(i)
-  g.appendChild(d)
+ if(!this.flt.length){
+  g.innerHTML=''
+  nd.classList.remove('hidden')
+  return
+ }
+
+ nd.classList.add('hidden')
+
+ const frag=document.createDocumentFragment()
+
+ this.flt.slice(0,300).forEach(ch=>{
+  const d=document.createElement('div')
+  d.className='crd'
+  d.dataset.id=ch.id
+
+  d.innerHTML=`
+    <span class="crd-n">${ch.num}</span>
+    <div class="crd-ph">${ch.name[0]}</div>
+    <div class="crd-nm">${ch.name}</div>
+  `
+
+  frag.appendChild(d)
  })
+
+ g.innerHTML=''
+ g.appendChild(frag)
 }
 
 /* ================= PLAYER ================= */
@@ -123,56 +141,118 @@ const preloadMap=new Map()
 function preload(ch){
  if(preloadMap.has(ch.url)) return
 
- const v=document.createElement("video")
- v.muted=true
+ const V={
+ el:null,hls:null,ch:null,
+ preloadMap:new Map(),
 
- if(Hls.isSupported() && ch.url.includes(".m3u8")){
-  const h=new Hls()
-  h.loadSource(ch.url)
-  h.attachMedia(v)
-  preloadMap.set(ch.url,{v,h})
- }else{
-  v.src=ch.url
-  v.load()
-  preloadMap.set(ch.url,{v})
- }
-}
+ init(){
+  this.el=$('vid')
+ },
 
-async function play(i){
- curIndex=i
- const ch=filtered[i]
+ async play(ch){
+  this.ch=ch
+  this.stop()
 
- document.getElementById("player").style.display="block"
+  $('player').classList.remove('hidden')
+  $('pL').classList.remove('hidden')
 
- if(hls){hls.destroy();hls=null}
+  const pre=this.preloadMap.get(ch.id)
 
- const pre=preloadMap.get(ch.url)
+  try{
+    if(pre){
+      if(pre.hls){
+        this.hls=pre.hls
+        this.hls.attachMedia(this.el)
+      }else{
+        this.el.src=pre.v.src
+      }
+      this.preloadMap.delete(ch.id)
+    }else{
+      await this.load(ch)
+    }
 
- if(pre){
-  if(pre.hls){
-   hls=pre.hls
-   hls.attachMedia(video)
-  }else{
-   video.src=pre.v.src
+    this.el.play()
+    $('pL').classList.add('hidden')
+
+    this.preloadNext()
+
+  }catch(e){
+    this.fail()
   }
-  preloadMap.delete(ch.url)
- }else{
-  if(Hls.isSupported() && ch.url.includes(".m3u8")){
-   hls=new Hls()
-   hls.loadSource(ch.url)
-   hls.attachMedia(video)
-  }else{
-   video.src=ch.url
+ },
+
+ async load(ch){
+  const url=ch.url
+
+  if(Hls.isSupported() && url.includes('.m3u8')){
+    return new Promise((ok,no)=>{
+      const h=new Hls({
+        maxBufferLength:60,
+        fragLoadingMaxRetry:8
+      })
+
+      h.loadSource(url)
+      h.attachMedia(this.el)
+
+      h.on(Hls.Events.MANIFEST_PARSED,()=>ok())
+
+      h.on(Hls.Events.ERROR,(e,d)=>{
+        if(d.fatal){
+          h.destroy()
+          this.loadDirect(url).then(ok).catch(no)
+        }
+      })
+
+      this.hls=h
+    })
   }
+
+  return this.loadDirect(url)
+ },
+
+ loadDirect(url){
+  return new Promise((ok,no)=>{
+    this.el.src=url
+    this.el.oncanplay=()=>ok()
+    this.el.onerror=()=>no()
+  })
+ },
+
+ preload(ch){
+  if(this.preloadMap.has(ch.id)) return
+
+  const v=document.createElement('video')
+  v.muted=true
+
+  if(Hls.isSupported() && ch.url.includes('.m3u8')){
+    const h=new Hls()
+    h.loadSource(ch.url)
+    h.attachMedia(v)
+    this.preloadMap.set(ch.id,{v,h})
+  }else{
+    v.src=ch.url
+    v.load()
+    this.preloadMap.set(ch.id,{v})
+  }
+ },
+
+ preloadNext(){
+  const i=A.curI
+  const list=A.flt
+
+  if(list[i+1]) this.preload(list[i+1])
+  if(list[i-1]) this.preload(list[i-1])
+ },
+
+ stop(){
+  if(this.hls){this.hls.destroy();this.hls=null}
+  this.el.src=''
+ },
+
+ fail(){
+  $('pL').classList.add('hidden')
+  $('pE').classList.remove('hidden')
  }
-
- video.play()
-
- // preload next
- setTimeout(()=>{
-  if(filtered[i+1]) preload(filtered[i+1])
-  if(filtered[i-1]) preload(filtered[i-1])
- },300)
 }
 
 /* ================= NAV ================= */
@@ -187,30 +267,32 @@ function focusCard(i){
 }
 
 /* ================= REMOTE ================= */
-let lock=false
+let navLock=false
 
-document.addEventListener("keydown",e=>{
- if(lock)return
- lock=true
- setTimeout(()=>lock=false,80)
+document.addEventListener('keydown',e=>{
+ if(navLock) return
+ navLock=true
+ setTimeout(()=>navLock=false,70)
 
- const cards=document.querySelectorAll(".card")
+ const k=e.key
 
- if(e.key==="ArrowRight") focusCard(Math.min(cards.length-1,fi+1))
- if(e.key==="ArrowLeft") focusCard(Math.max(0,fi-1))
- if(e.key==="ArrowDown") focusCard(Math.min(cards.length-1,fi+6))
- if(e.key==="ArrowUp") focusCard(Math.max(0,fi-6))
+ if(k==="ArrowUp") A.navG('u')
+ if(k==="ArrowDown") A.navG('d')
+ if(k==="ArrowLeft") A.navG('l')
+ if(k==="ArrowRight") A.navG('r')
 
- if(e.key==="Enter") play(fi)
+ if(k==="Enter"){
+   const fc=document.querySelector('.crd.foc')
+   if(fc) A.playCh(fc.dataset.id)
+ }
 
- if(e.key==="Escape" || e.key==="Backspace"){
-  document.getElementById("player").style.display="none"
-  video.pause()
+ if(k==="Escape" || k==="Backspace"){
+   if(A.pVis()) A.closeP()
  }
 
  // kanal zap
- if(e.key==="PageDown") play((curIndex+1)%filtered.length)
- if(e.key==="PageUp") play((curIndex-1+filtered.length)%filtered.length)
+ if(k==="PageDown") A.nextCh()
+ if(k==="PageUp") A.prevCh()
 })
 
 /* ================= START ================= */
