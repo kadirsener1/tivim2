@@ -1119,7 +1119,7 @@ let favs=JSON.parse(ls('vg_favs')||'[]');
 let movieLib=JSON.parse(ls('vg_mlib')||'[]');
 let curCh=null, curMovie=null;
 let isAdmin=false, curUser=null;
-let sortAsc=ls('vg_sort')!=='false';
+let sortAsc=ls('vg_sort')!=='true';
 let curCat='Tümü';
 let hlsInst=null, tsInst=null, movieHls=null;
 let vsFiltered=[], vsItemH=60, vsRAF=null, debTimer=null;
